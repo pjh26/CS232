@@ -1,0 +1,105 @@
+/* main.cpp drives the testing of the array operations.
+ * Student:
+ * Date:
+ */
+
+#include <iostream>
+#include <sys/types.h>
+#include <unistd.h>
+#include <string>
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <sys/wait.h>
+#include "NanoTimer.h"
+
+using namespace std;
+
+void *PrintThreadID(void *threadid) {
+	long tid = (long)threadid;
+	printf("Hello from the child (TID = %f)\n", tid);
+	pthread_exit(NULL);
+}
+
+int main(int argc, char* argv[]) {
+	string str;
+	bool Process = false;
+	bool Thread  = false;
+	int num = 1;
+	int dummyVar;
+
+	for (int i = 1; i < (argc); i++) {
+		str = argv[i];
+		if (str == "-p") {
+			Process = true;
+		} else if (str == "-process") {
+			Process = true;
+		} else if (str == "-t") {
+			Thread = true;
+		} else if (str == "-thread") {
+			Thread = true;
+		} else if (str.substr(0, 2) == "-r") {
+			if (str.length() > 2) {
+				num = atoi(str.substr(2).c_str());
+			}
+			if (num < 1) {
+				cout << "Please pick a valid number of repeats!!" << endl;
+				return 1;
+			}
+		} else {
+			cout << "Please pick a process or thread to time!!" << endl;
+			return 1;
+		}
+	}
+
+	double processTime;
+	double  threadTime;
+	NanoTimer timer;
+
+	if (Process) {
+		for (int i = 0; i < num; i++) {
+			// Time the process
+			timer.start();
+			//Fork stuff
+			pid_t pid = fork();
+			timer.stop();
+			if (pid == 0) {
+				int id = getpid();
+				printf("Hello from the child process (PID = %d)\n", id);
+				exit(0);
+			}
+			pid_t pid_temp = wait(&dummyVar);
+		}
+		processTime = (timer.getTotalTime())/(num);
+		timer.reset();
+		printf("Average process was %f\n", processTime);
+	}
+
+	if (Thread) {
+		pthread_t threads[num];
+		int t_int;
+		for (long i = 0; i < num; i++) {
+			timer.start();
+			t_int = pthread_create(&threads[i], NULL, PrintThreadID, (void *)i);
+			timer.stop();
+		}
+		threadTime = (timer.getTotalTime())/(num);
+		printf("Average thread was %f\n", threadTime);
+	}
+
+
+	// Output the information
+}
+
+
+
+
+
+
+
+
+
+
+
+
+

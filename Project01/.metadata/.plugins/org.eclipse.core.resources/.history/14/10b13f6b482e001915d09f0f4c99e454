@@ -1,0 +1,93 @@
+/* main.cpp drives the testing of the array operations.
+ * Student:
+ * Date:
+ */
+
+#include <iostream>
+#include <sys/types.h>
+#include <unistd.h>
+#include <string>
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include "NanoTimer.h"
+#include <sys/wait.h>
+
+using namespace std;
+
+int main(int argc, char* argv[]) {
+	string str;
+	bool Process = false;
+	bool Thread  = false;
+	int num = 1;
+	int tempwait;
+
+	for (int i = 1; i < (argc); i++) {
+		str = argv[i];
+		if (str == "-p") {
+			Process = true;
+		} else if (str == "-process") {
+			Process = true;
+		} else if (str == "-t") {
+			Thread = true;
+		} else if (str == "-thread") {
+			Thread = true;
+		} else if (str.substr(0, 2) == "-r") {
+			if (str.length() > 2) {
+				num = atoi(str.substr(2).c_str());
+			}
+			if (num < 1) {
+				cout << "Please pick a valid number of repeats!!" << endl;
+				return 1;
+			}
+		} else {
+			cout << "Please pick a process or thread to time!!" << endl;
+			return 1;
+		}
+	}
+
+	double processTime;
+	double  threadTime;
+	NanoTimer timer;
+
+	if (Process) {
+		for (int i = 0; i < num; i++) {
+			// Time the process
+			timer.start();
+			//Fork stuff
+			pid_t pid = fork();
+			timer.stop();
+			if (pid == 0) {
+				int id = getpid();
+				printf("Hello from the child process (PID = %d)\n", id);
+				exit(0);
+			}
+		}
+		processTime = (timer.getTotalTime())/(num);
+		timer.reset();
+		pid_t pid_temp = wait(&temp);
+		printf("Average process was %f\n", processTime);
+	}
+
+
+	if (Thread) {
+		for (int i = 0; i < num; i++) {
+			// Time the thread
+			timer.start();
+			//Thread stuff
+//			int thread = pthread_create();
+			timer.stop();
+		}
+		threadTime = (timer.getTotalTime())/(num);
+		printf("Average thread was %f\n", threadTime);
+	}
+
+
+	// Output the information
+}
+
+//double getProcessTime() {
+//
+//
+//	return time;
+//}

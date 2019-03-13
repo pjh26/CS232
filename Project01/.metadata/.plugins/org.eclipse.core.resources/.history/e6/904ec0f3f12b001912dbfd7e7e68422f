@@ -1,0 +1,48 @@
+/* main.cpp drives the testing of the array operations.
+ * Student:
+ * Date:
+ */
+
+#include <iostream>
+#include <pthread.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <string>
+#include <stdio.h>
+#include <stdlib.h>
+
+using namespace std;
+
+int main(int argc, char* argv[]) {
+	string str;
+	bool Process = false;
+	bool Thread  = false;
+	int num;
+
+	for (int i = 1; i < (argc - 1); i++) {
+		str = argv[i];
+		if (str == "-p") {
+			Process = true;
+		} else if (str == "-process") {
+			Process = true;
+		} else if (str == "-t") {
+			Thread = true;
+		} else if (str == "-thread") {
+			Thread = true;
+		} else if (str.substr(0, 2) == "-r") {
+			if (str.length() > 2) {
+				num = atoi(str.substr(2).c_str());
+			}
+			if (num < 1) {
+				cout << "Please pick a valid number of repeats!!" << endl;
+				return 1;
+			}
+		} else {
+			cout << "Please pick a process or thread to time!!" << endl;
+			return 1;
+		}
+	}
+
+
+
+}

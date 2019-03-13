@@ -1,0 +1,987 @@
+Script started on Fri 01 Mar 2019 05:02:42 PM EST
+pjh26@gold31:~/232/Project02/callTimerUI$ ls
+callTimer  CallTimer.h	CMDController.h  CMDInterface.h  Interface.h  main.cpp	main.o	makefile  NanoTimer.h  TXTController.h	TXTInterface.h	typescript
+pjh26@gold31:~/232/Project02/callTimerUI$ cat *.cpp *.h
+/** main.cpp
+*
+*   Student:	Peter Haagsma
+*   Date:		02/26/2019
+*/
+
+#include "CMDController.h"
+#include "TXTController.h"
+
+using namespace std;
+
+/** Main program
+*
+*	Takes in user arguments and outputs average time to create threads or processes
+*	@params: List of strings seperated by spaces
+*/
+int main(int argc, char** argv) {
+	
+	if (argc > 1) {
+		CMDController controller = CMDController(argc, argv);
+		controller.run();
+	} else {
+		TXTController controller = TXTController();
+		controller.run();
+	}
+}
+
+// We made it!/** CallTimer.h - This class times how long it takes to create a new process or thread
+*	
+*   Student:	Peter Haagsma
+*   Date:		02/26/2019
+*/
+
+#ifndef CALL_TIMER_H_
+#define CALL_TIMER_H_
+
+#include "NanoTimer.h"
+#include <iostream>
+#include <sys/types.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <sys/wait.h>
+#include <sys/syscall.h>
+
+using namespace std;
+
+class CallTimer {
+public:
+	CallTimer( bool Process, bool Thread, int num);
+	double getProcessTime()	{ return processTime; }
+	double getThreadTime()	{ return threadTime; }
+private:
+	double processTime = 0;
+	double threadTime = 0;
+	void process(int num);
+	void thread(int num);
+	void *PrintThreadID(void *threadid);
+	
+	class ThreadTask {
+	public:
+		void *PrintThreadID(void *threadid);
+	};
+};
+
+CallTimer::CallTimer( bool Process, bool Thread, int num) {
+	if (Process) process(num);
+	if (Thread) thread(num);
+}
+
+void* CallTimer::ThreadTask::PrintThreadID(void* threadid) {
+	printf("Hello from the child (TID = %ld)\n", syscall(__NR_gettid));
+	pthread_exit(NULL);
+}
+
+void CallTimer::process(int num) {
+	NanoTimer timer;
+	// We create and time the desired number of processes
+	for (int i = 0; i < num; i++) {
+		timer.start();
+		pid_t pid = fork();
+		timer.stop();
+		// In the child process, pid = 0 so only the children run these 3 lines
+		if (pid == 0) {
+			int id = getpid();
+			printf("Hello from the child process (PID = %d)\n", id);
+			exit(0);
+		}
+		// Parent waits for child
+		wait(NULL);
+	}
+	//Here we calculate the average time it took and restart the timer
+	processTime = (timer.getTotalTime())/(num);
+}
+
+void CallTimer::thread(int num) {
+	NanoTimer timer;
+	pthread_t threads[num];
+	ThreadTask *taskPtr = new ThreadTask();
+	// Then we create and time the desired number of threads
+	for (long i = 0; i < num; i++) {
+		timer.start();
+		// Yeah... I have no clue whats going on with the void stars, but it worked. Heres the link
+		// https://stackoverflow.com/questions/1151582/pthread-function-from-a-class
+		(void) pthread_create(&threads[i], NULL, (void* (*)(void*)) &ThreadTask::PrintThreadID, taskPtr); 
+		timer.stop();
+		// Thread equivalent of wait
+		pthread_join(threads[i], NULL);
+	}
+	// Here we calculate the average time it took
+	threadTime = (timer.getTotalTime())/(num);
+}
+
+
+
+#endif /* NANO_TIMER_H_ */
+
+/** CMDController.h - Used to control the CMDinterface class as well act as a bridge between 
+*					  the interface and the model
+*
+*   Student:	Peter Haagsma
+*   Date:		02/26/2019
+*/
+
+#ifndef CMD_CONTROLLER_H_
+#define CMD_CONTROLLER_H_
+
+#include "CMDInterface.h"
+#include "CallTimer.h"
+
+using namespace std;
+
+class CMDController {
+public:
+	CMDController(int argc, char** argv);
+	void run();
+
+private:
+	void parseCommand(bool &process, bool &thread, int &numRep);
+	void runCallTimer(bool process, bool thread, int numRep);
+
+	int 	ARG_C;
+	char**	ARG_V;
+	CMDInterface CMD = CMDInterface();
+};
+
+/** CMDController(int argc, char** argv)
+*	
+*	This is the constructor for the CMDController class, it is used to define a couple of variables
+*	@params: int argc (how many inputs there are) and an array of char* containing the commandline inputs
+*/
+CMDController::CMDController(int argc, char** argv) {
+	ARG_C = argc;
+	ARG_V = argv;
+}
+
+/** run()
+*
+*	This function could be inside the constructor however, separating the constructor
+*	and the run function allows the person who called the class to create the controller
+*	object whenever they want and run it whenever they want.
+*/
+void CMDController::run() {
+	bool process;				// Process, thread and numRep vars are initialized here because they
+	bool thread;				// will be passed by reference to our parseCommand function
+	int numRep;
+	parseCommand(process, thread, numRep); 
+
+	string confirmation = CMD.confirm(process, thread, numRep);
+	if ( !(confirmation == "Y" || confirmation == "y") )  {
+		CMD.quit();
+	}
+
+	runCallTimer(process, thread, numRep);
+
+	CMD.quit();
+}
+
+/** parseCommand(bool &process, bool &thread, int &numRep)
+*
+*	This command takes the arguments from the command line and sets the process, thread,
+*	and numRep variables accordingly
+*	@params: process, thread, numRep. These are passed by reference so that global variables
+*			 could be avoided.
+*/
+void CMDController::parseCommand(bool &process, bool &thread, int &numRep) {
+	process = false;	// Set the variables to default values
+	thread = false;		// numRep defaults to 1 because if the user doesn't have a -rXX term
+	numRep = 1;			// then the command should default to one repetition.
+	string str;
+
+	// This for loop parses the list of input args and determines what the user wants
+	for (int i = 1; i < (ARG_C); i++) {
+		str = ARG_V[i];
+		if (str == "-p" || str == "-process") {
+			process = true;
+		} else if (str == "-t" || str == "-thread") {
+			thread = true;
+		} else if (str.substr(0, 2) == "-r") {
+			if (str.length() > 2) {
+				try {		// If the user enters a valid -r term then it is passed to numRep
+					numRep = atoi(str.substr(2).c_str());
+				} catch (exception &e) { // If the user enters a bad -r term a 0 is passed to numRep
+					numRep = 0;
+				}
+			}
+		} else {
+			CMD.error();
+		}
+	}
+
+	if (!process && !thread) { 	// if the user only puts in an -rXX term then we throw an error
+		CMD.error();
+	}
+
+	if (numRep < 1) {			// If the user puts a bad -rXX term then we throw an error
+		CMD.error();
+	}
+}
+
+/** runCallTimer(bool process, bool thread, int numRep)
+*
+*	This function interprets the users choices and sends them to the model to get desired info
+*	then relays that to the interface to be displayed
+*	@params: bool process & thread, and the desired number of repetitions, these will
+*			 be used to determine how the CallTimer model is modeled
+*/
+void CMDController::runCallTimer(bool process, bool thread, int numRep) {
+	double pTime = 0;
+	double tTime = 0;
+	
+	CallTimer Ctmr = CallTimer(process, thread, numRep); // Call the model
+
+	if (process) pTime = Ctmr.getProcessTime(); // get the times, we use ifs to avoid unnecessary function calls
+	if (thread)  tTime = Ctmr.getThreadTime();  // it would achieve the same goal without them but it saves some time
+
+	CMD.displayResults(pTime, tTime); // We send those results to the interface to be displayed
+}
+
+#endif /* CMD_CONTROLLER_H_ *//** CMDInterface.h - This subclass inherits from Interface and interacts with the user. It relays 
+*					 the user inputs to the CMDcontoller class as well as display the data collected
+*					 by the controller
+*
+*   Student:	Peter Haagsma
+*   Date:		02/26/2019
+*/
+
+#ifndef CMD_INTERFACE_H_
+#define CMD_INTERFACE_H_
+
+#include "Interface.h"
+
+using namespace std;
+
+class CMDInterface: public Interface {
+public:
+	string confirm(bool process, bool thread, int numRep);
+	void error();
+};
+
+/** confirm(bool process, bool thread, int numRep)
+*
+*	This function gives the user a chance to see how the program interpreted their input, allowing
+* 	them to make sure that what they want to happen is actually happening
+*	@param: bool process, thread, int numRep. The booleans are used to determine what the messge will
+*			say and the numRep is changed to a string to include in the message
+*	return: Returns the user input (string)
+*/
+string CMDInterface::confirm(bool process, bool thread, int numRep) {
+	string choiceSTR, numSTR;
+
+	if (process && thread) {	// We check the case of process && thread first to get the correct method
+		choiceSTR = "how long it takes to create both threads and processes";
+	} else if (process) {
+		choiceSTR = "how long it takes to create a process";
+	} else if (thread) {
+		choiceSTR = "how long it takes to create a thread";
+	}
+
+	ostringstream stm;		// These three lines are used to convert the int numRep into a string for 
+	stm << numRep;			// outputting to the console
+    numSTR = stm.str() ;
+
+	cout << "\nYou have decided to time " + choiceSTR + " for " + numSTR + " repetitions.\n" << endl;
+	cout << "Would you like to continue? (Y/N)\n";
+
+	cin >> USER_INPUT;		// Here we return the user input
+	cout << endl;
+	return USER_INPUT;
+}
+
+/** error()
+*
+*	This simply overrides the super definition of error. It adds a line after the message
+*	and exits the program.
+*/
+void CMDInterface::error() {
+	Interface::error();
+	cout << endl;
+	exit(1);
+}
+
+#endif /* CMD_INTERFACE_H_ *//** Interface.h - This class interacts with the user and relays the user inputs to the
+*				  contoller class as well as display the data collected by controller
+*
+*   Student:	Peter Haagsma
+*   Date:		02/26/2019
+*/
+
+#ifndef INTERFACE_H_
+#define INTERFACE_H_
+
+#include <iostream>
+#include <string>
+#include <cstdlib>
+#include <exception>
+#include <stdio.h>
+#include <sstream>
+
+using namespace std;
+
+class Interface {
+public:
+	void displayResults(double pTime, double tTime);
+	void pause();
+	void error();
+	void quit();
+protected:
+	string USER_INPUT;
+
+};
+
+/** displayResults(processTime, threadTime)
+*
+*	This function simply takes the average times given from the controller and displays them nicely
+*	It only displays the time if it has been changed from 0
+*	@params: the average process and thread time, if one is equal to zero then it will not be displayed
+*/
+void Interface::displayResults(double pTime, double tTime) {
+	if ( pTime > 0 ) printf("\nAverage process was %f\n", pTime);
+	if ( tTime > 0 ) printf("\nAverage thread was %f\n", tTime);
+}
+
+/** quit()
+*
+*	Displays a nice menu then exits the program with a successful "0" code
+*/
+void Interface::quit() {
+	cout << "\nThank you for using the thread and process timing machine. Have a great day!\n\n\n";
+	exit(0);
+}
+
+/** error()
+*
+* 	Informs the user that they have entered something incorrectly
+*/
+void Interface::error() {
+	cout << "\nPlease enter a valid input!" << endl;
+}
+
+/** pause()
+*
+*	Uses cin to pause the program so the current screen does not move away and allows the user
+* 	to progress at their own pace
+*/
+void Interface::pause() {
+	cout << "\nEnter any letter when ready to continue." << endl;
+	cin >> USER_INPUT;
+}
+
+#endif /* INTERFACE_H_ *//* NanoTimer.h provides a simple nano-scale timer.
+ *
+ * Begun by: John Kloosterman, for CS 232 at Calvin College.
+ * Enhanced by: Prof. Adams.
+ *
+ * To use this class, compile/link with the '-lrt' switch.
+ *
+ * In Eclipse: Project > Properties > GCC C++ Linker > Libraries > Libraries > +, add 'rt'
+ */
+
+#ifndef NANO_TIMER_H_
+#define NANO_TIMER_H_
+
+#include <ctime>        // timespec, clock_gettime(), etc.
+#include <iostream>     // C++ I/O
+#include <iomanip>      // setprecision()
+#include <sstream>      // stringstream for in-memory formatting
+using namespace std;
+
+class NanoTimer {
+public:
+	NanoTimer()                  { myTotalTime = 0.0; }
+	void start();
+	void stop();
+	void reset()                 { myTotalTime = 0.0; }
+    string asString() const;
+	double getTotalTime() const  { return myTotalTime; }
+	double asDouble() const;
+
+private:
+	struct timespec myStart;
+	struct timespec myEnd;
+	double myTotalTime;
+};
+
+
+/* start the timer.
+ * Postcondition: myStart contains the current time.
+ */
+inline
+void NanoTimer::start() {
+	clock_gettime(CLOCK_MONOTONIC, &myStart);
+}
+
+/* stop the timer.
+ * Postcondition: myStop contains the current time.
+ */
+inline
+void NanoTimer::stop() {
+	clock_gettime(CLOCK_MONOTONIC, &myEnd);
+	myTotalTime += this->asDouble();
+}
+
+const long NSEC_PER_SEC = 1000000000;
+
+/* Utility function to compute time differences
+ *  (used by asString(), asDouble(), etc.
+ * Receive: end, begin, two timespec values.
+ * Return: end - begin
+ * Based on: http://www.gnu.org/s/libc/manual/html_node/Elapsed-Time.html
+ */
+inline
+timespec operator-(const timespec& end, const timespec& begin)
+{
+	timespec result = begin;
+	/* Perform the carry for the later subtraction. */
+	if (end.tv_nsec < begin.tv_nsec) {
+		int nsec = (begin.tv_nsec - end.tv_nsec) / NSEC_PER_SEC + 1;
+		result.tv_nsec -= NSEC_PER_SEC * nsec;
+		result.tv_sec += nsec;
+	}
+	if (end.tv_nsec - begin.tv_nsec > NSEC_PER_SEC) {
+		int nsec = (end.tv_nsec - begin.tv_nsec) / NSEC_PER_SEC;
+		result.tv_nsec += NSEC_PER_SEC * nsec;
+		result.tv_sec -= nsec;
+	}
+
+	/* Compute the time remaining to wait.
+            tv_usec is certainly positive. */
+	result.tv_sec = end.tv_sec - result.tv_sec;
+	result.tv_nsec = end.tv_nsec - result.tv_nsec;
+
+	return result;
+}
+
+/* String representation.
+ * Return: the processor time (user + system) 
+ *    used in the interval between calls to start() and stop(),
+ *    with nanosecond granularity, as a string.
+ */
+inline
+string NanoTimer::asString() const {
+    struct timespec diff = myEnd - myStart;
+    stringstream sstr;
+    sstr << diff.tv_sec 
+         << ( (diff.tv_sec == 1) ? " sec, " : " secs, " )
+         << diff.tv_nsec 
+         << " nsecs";
+    return sstr.str();
+}
+
+/* Double representation.
+ * Return: the processor time (user + system)
+ *    used in the interval between calls to start() and stop(),
+ *    with nanosecond granularity, as a double.
+ */
+inline
+double NanoTimer::asDouble() const {
+   struct timespec diff = myEnd - myStart;
+   return double(diff.tv_sec) + double(diff.tv_nsec) / double(NSEC_PER_SEC);
+}
+
+
+/* ostream output
+ * Receive: out, an ostream; aTimer, a NanoTimer.
+ * Postcondition: aTimer's double representation
+ *      has been inserted into out.
+ * Return: out (for chaining).
+ */
+inline
+ostream& operator<<(ostream& out, const NanoTimer& aTimer) {
+   out << fixed << showpoint << setprecision(9)
+	   << aTimer.getTotalTime();
+   return out;
+}
+
+/* Utility function to display a timespec structure's values
+ *  (for debugging purposes)
+ */
+inline
+ostream& operator<<(ostream& out, const struct timespec& ts) {
+   out << ts.tv_sec 
+       << ( (ts.tv_sec == 1) ? " sec, " : " secs, " )
+       << ts.tv_nsec 
+       << " nsecs";
+   return out;
+}
+
+#endif /* NANO_TIMER_H_ */
+
+/** TXTController.h	- Used to control the TXTinterface class as well act as a bridge between 
+*					  the interface and the model
+*
+*   Student:	Peter Haagsma
+*   Date:		02/26/2019
+*/
+
+#ifndef TXT_CONTROLLER_H_
+#define TXT_CONTROLLER_H_
+
+#include "TXTInterface.h"
+#include "CallTimer.h"
+
+using namespace std;
+
+class TXTController {
+public:
+	void run();
+private:
+	int runOptionLoop();
+	int runNumberLoop(int userChoice);
+	void runCallTimer(int userChoice, int numRepetitions);
+
+	TXTInterface TXT = TXTInterface();
+};
+
+/** run()
+*
+*	This function could be inside the constructor however, separating the constructor
+*	and the run function allows the person who called the class to create the controller
+*	object whenever they want and run it whenever they want.
+*/
+void TXTController::run() {
+	int userChoice;
+	int numRepetitions;
+
+	// This loop allows user to use the program as long as they want. It is terminated by the
+	// user entering an exit command
+	while (true) {
+		userChoice = runOptionLoop(); // displays options duh
+
+		numRepetitions = runNumberLoop(userChoice); // allows user to pick number of repetitions
+
+		runCallTimer(userChoice, numRepetitions); // runs our model
+
+		TXT.pause(); // wait for user to be ready to continue
+	}
+}
+
+/** runOptionLoop()
+*
+*	This function loops until the user enters a valid option
+*	returns: The option (int) the user selected or exits the program if the user selects quit
+*/
+int TXTController::runOptionLoop() {
+	int optionNUM;
+	string optionSTR;
+	while (true) {
+		optionSTR = TXT.PTOption();
+
+		try {									// If the user enters a number then it is passed to optionNUM
+			optionNUM = atoi(optionSTR.c_str());
+		} catch (exception &e) {				// If the user enters anything else a 0 is passed to optionNUM
+			optionNUM = 0;
+		}
+
+		switch (optionNUM) {		// If the number is 1-3 its returned, 4 means we exit otherwise error
+			case 1:
+				return optionNUM;
+			case 2:
+				return optionNUM;
+			case 3:
+				return optionNUM;
+			case 4:
+				TXT.quit();
+			default:
+				TXT.error();
+		}
+	}
+}
+
+/** runNumberLoop(userChoice)
+*
+*	This function loops until the user picks a valid number of repetitions
+*	@params: int containing the userChoice, this is sent to the interface to help the 
+*			 UI be more informative
+* 	returns: the number of repetitions the user wants
+*/
+int TXTController::runNumberLoop(int userChoice) {
+	int numRepetitions;
+	string numSTR;
+	while (true) {
+		
+		numSTR = TXT.NUMOption(userChoice); // Sends userChoice to the interface 
+
+		try {									// If the user enters a number then it is passed to numRep
+			numRepetitions = atoi(numSTR.c_str());
+		} catch (exception &e) {				// If the user enters anything else a 0 is passed to numRep
+			numRepetitions = 0;
+		}
+
+		if (numRepetitions < 1)  {
+			TXT.error(); // If it isn't valid (less than 1) then we tell the interface to error
+		} else {
+			return numRepetitions; // Otherwise we return the value
+		}
+	}
+}
+
+/** runCallTimer(userChoice, numRepetitions)
+*
+*	This function interprets the users choices and sends them to the model to get desired info
+*	then relays that to the interface to be displayed
+*	@params: int containing the user choice, and the desired number of repetitions, these will
+*			 be used to determine how the CallTimer model is modeled
+*/
+void TXTController::runCallTimer(int userChoice, int numRepetitions) {
+	bool thread = false;
+	bool process = false;
+
+	double pTime = 0;
+	double tTime = 0;
+
+	// Here we take the users choice and translate it for the model to use
+	switch (userChoice) {
+		case 1:
+			thread = true;
+			break;
+		case 2:
+			process = true;
+			break;
+		case 3:
+			thread = process = true;
+			break;
+	}
+
+	CallTimer Ctmr = CallTimer(process, thread, numRepetitions); // Call the model
+
+	if (process) pTime = Ctmr.getProcessTime(); // get the times, we use ifs to avoid unnecessary function calls
+	if (thread)  tTime = Ctmr.getThreadTime();  // it would achieve the same goal without them but it saves some time
+
+	TXT.displayResults(pTime, tTime); // We send those results to the interface to be displayed
+}
+
+#endif /* TXT_CONTROLLER_H_ *//** TXTInterface.h - This subclass inherits from Interface and interacts with the user. It relays 
+*					 the user inputs to the TXTcontoller class as well as display the data collected
+*					 by the controller
+*					 
+*   Student:	Peter Haagsma
+*   Date:		02/26/2019
+*/
+
+#ifndef TXT_INTERFACE_H_
+#define TXT_INTERFACE_H_
+
+#include "Interface.h"
+
+using namespace std;
+
+class TXTInterface: public Interface {
+public:
+	TXTInterface();
+	string PTOption();
+	string NUMOption(int PTOption);
+};
+
+/** TXTInterface() 
+*
+*	Constructor simply displays some intro text to the user
+*/
+TXTInterface::TXTInterface() {
+	cout << "\n\n\nWelcome to the thread and process timing machine!! Time your processes and threads right here!\n\nTime 10 threads today and get the eleventh free!\n\nIn fact, if you time 10 threads and processes within the hour\n\nI'll include 50, thats right you heard it, 50 threads AND processes for FREE! \n\n";
+	cout << "\n\n\nPlease select whether you want to time processes or threads in the following menu" << endl;
+}
+
+/** PTOption()
+*
+*	This function displays the menu and takes in the user choice
+*	returns: An integer based on the user input, and 0 if the input isn't a number
+*/
+string TXTInterface::PTOption() {
+	cout << "\nPlease enter the corresponding number of your choice\n" << endl;
+	cout << "1: . . Threads" << endl;
+	cout << "2: . . Processes" << endl;
+	cout << "3: . . Threads and Processes" << endl;
+	cout << "4: . . Exit" << endl;
+	
+	cin >> USER_INPUT;
+	return USER_INPUT;
+}
+
+/** NUMOption(Process/Thread Option)
+*
+*	This function recieves the (int) users choice and then asks for how may repetitions.
+*	Depending on the choice it displays a different question for the users sake
+*	@params: an integer from 1-3, this is used to 'personalize' the question
+*	returns: the user input
+*/
+string TXTInterface::NUMOption(int PTOption) {
+	string strOption;
+	switch (PTOption) {
+		case 1:
+			strOption = "Threads";
+			break;
+		case 2:
+			strOption = "Processes";
+			break;
+		case 3:
+			strOption = "Threads & Processes";
+			break;
+	}
+
+	cout << "\nHow many " + strOption + " would you like to time?" << endl;
+	cout << "Please enter a whole number greater than zero" << endl;
+	
+	cin >> USER_INPUT;
+	return USER_INPUT;
+}
+
+#endif /* TXT_INTERFACE_H_ */pjh26@gold31:~/232/Project02/callTimerUI$ ./  make
+make: 'callTimer' is up to date.
+pjh26@gold31:~/232/Project02/callTimerUI$ ./callTimer -p
+
+You have decided to time how long it takes to create a process for 1 repetitions.
+
+Would you like to continue? (Y/N)
+y
+
+Hello from the child process (PID = 23218)
+
+Average process was 0.000128
+
+Thank you for using the thread and process timing machine. Have a great day!
+
+
+pjh26@gold31:~/232/Project02/callTimerUI$ ./callTimer -p
+
+You have decided to time how long it takes to create a process for 1 repetitions.
+
+Would you like to continue? (Y/N)
+n
+
+
+Thank you for using the thread and process timing machine. Have a great day!
+
+
+pjh26@gold31:~/232/Project02/callTimerUI$ ./callTimer -p -t
+
+You have decided to time how long it takes to create both threads and processes for 1 repetitions.
+
+Would you like to continue? (Y/N)
+y
+
+Hello from the child process (PID = 23222)
+Hello from the child (TID = 23223)
+
+Average process was 0.000177
+
+Average thread was 0.000089
+
+Thank you for using the thread and process timing machine. Have a great day!
+
+
+pjh26@gold31:~/232/Project02/callTimerUI$ ./callTimer -p -t -r5
+
+You have decided to time how long it takes to create both threads and processes for 5 repetitions.
+
+Would you like to continue? (Y/N)
+y
+
+Hello from the child process (PID = 23226)
+Hello from the child process (PID = 23227)
+Hello from the child process (PID = 23228)
+Hello from the child process (PID = 23229)
+Hello from the child process (PID = 23230)
+Hello from the child (TID = 23231)
+Hello from the child (TID = 23232)
+Hello from the child (TID = 23233)
+Hello from the child (TID = 23234)
+Hello from the child (TID = 23235)
+
+Average process was 0.000068
+
+Average thread was 0.000021
+
+Thank you for using the thread and process timing machine. Have a great day!
+
+
+pjh26@gold31:~/232/Project02/callTimerUI$ ./callTimer -p -t -r5 0
+
+Please enter a valid input!
+
+pjh26@gold31:~/232/Project02/callTimerUI$ ./callTimer -p -t -r0  rNO
+
+Please enter a valid input!
+
+pjh26@gold31:~/232/Project02/callTimerUI$ ./callTimer -t
+
+You have decided to time how long it takes to create a thread for 1 repetitions.
+
+Would you like to continue? (Y/N)
+y
+
+Hello from the child (TID = 23239)
+
+Average thread was 0.000068
+
+Thank you for using the thread and process timing machine. Have a great day!
+
+
+pjh26@gold31:~/232/Project02/callTimerUI$ ./callTimer
+
+
+
+Welcome to the thread and process timing machine!! Time your processes and threads right here!
+
+Time 10 threads today and get the eleventh free!
+
+In fact, if you time 10 threads and processes within the hour
+
+I'll include 50, thats right you heard it, 50 threads AND processes for FREE! 
+
+
+
+
+Please select whether you want to time processes or threads in the following menu
+
+Please enter the corresponding number of your choice
+
+1: . . Threads
+2: . . Processes
+3: . . Threads and Processes
+4: . . Exit
+1
+
+How many Threads would you like to time?
+Please enter a whole number greater than zero
+-1
+
+Please enter a valid input!
+
+How many Threads would you like to time?
+Please enter a whole number greater than zero
+0
+
+Please enter a valid input!
+
+How many Threads would you like to time?
+Please enter a whole number greater than zero
+NO
+
+Please enter a valid input!
+
+How many Threads would you like to time?
+Please enter a whole number greater than zero
+5
+Hello from the child (TID = 23245)
+Hello from the child (TID = 23246)
+Hello from the child (TID = 23247)
+Hello from the child (TID = 23248)
+Hello from the child (TID = 23249)
+
+Average thread was 0.000028
+
+Enter any letter when ready to continue.
+g
+
+Please enter the corresponding number of your choice
+
+1: . . Threads
+2: . . Processes
+3: . . Threads and Processes
+4: . . Exit
+2
+
+How many Processes would you like to time?
+Please enter a whole number greater than zero
+5
+Hello from the child process (PID = 23259)
+Hello from the child process (PID = 23260)
+Hello from the child process (PID = 23261)
+Hello from the child process (PID = 23262)
+Hello from the child process (PID = 23263)
+
+Average process was 0.000156
+
+Enter any letter when ready to continue.
+1
+
+Please enter the corresponding number of your choice
+
+1: . . Threads
+2: . . Processes
+3: . . Threads and Processes
+4: . . Exit
+3
+
+How many Threads & Processes would you like to time?
+Please enter a whole number greater than zero
+5
+Hello from the child process (PID = 23264)
+Hello from the child process (PID = 23265)
+Hello from the child process (PID = 23266)
+Hello from the child process (PID = 23267)
+Hello from the child process (PID = 23268)
+Hello from the child (TID = 23269)
+Hello from the child (TID = 23270)
+Hello from the child (TID = 23271)
+Hello from the child (TID = 23272)
+Hello from the child (TID = 23273)
+
+Average process was 0.000065
+
+Average thread was 0.000018
+
+Enter any letter when ready to continue.
+1
+
+Please enter the corresponding number of your choice
+
+1: . . Threads
+2: . . Processes
+3: . . Threads and Processes
+4: . . Exit
+5
+
+Please enter a valid input!
+
+Please enter the corresponding number of your choice
+
+1: . . Threads
+2: . . Processes
+3: . . Threads and Processes
+4: . . Exit
+0
+
+Please enter a valid input!
+
+Please enter the corresponding number of your choice
+
+1: . . Threads
+2: . . Processes
+3: . . Threads and Processes
+4: . . Exit
+-1
+
+Please enter a valid input!
+
+Please enter the corresponding number of your choice
+
+1: . . Threads
+2: . . Processes
+3: . . Threads and Processes
+4: . . Exit
+NO
+
+Please enter a valid input!
+
+Please enter the corresponding number of your choice
+
+1: . . Threads
+2: . . Processes
+3: . . Threads and Processes
+4: . . Exit
+4
+
+Thank you for using the thread and process timing machine. Have a great day!
+
+
+pjh26@gold31:~/232/Project02/callTimerUI$ exit
+
+Script done on Fri 01 Mar 2019 05:04:29 PM EST

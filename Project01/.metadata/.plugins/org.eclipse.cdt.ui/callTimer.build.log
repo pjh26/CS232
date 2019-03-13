@@ -1,0 +1,26 @@
+21:04:52 **** Incremental Build of configuration Debug for project callTimer ****
+make all 
+Building file: ../main.cpp
+Invoking: GCC C++ Compiler
+g++ -O0 -g3 -Wall -c -fmessage-length=0 -MMD -MP -MF"main.d" -MT"main.o" -o "main.o" "../main.cpp"
+../main.cpp: In function 'int main(int, char**)':
+../main.cpp:71:10: warning: unused variable 'pid_temp' [-Wunused-variable]
+    pid_t pid_temp = wait(&dummyVar);
+          ^
+../main.cpp:80:7: warning: variable 't_int' set but not used [-Wunused-but-set-variable]
+   int t_int;
+       ^
+Finished building: ../main.cpp
+ 
+Building target: callTimer
+Invoking: GCC C++ Linker
+g++  -o "callTimer"  ./main.o   
+./main.o: In function `main':
+makefile:44: recipe for target 'callTimer' failed
+/home/pjh26/232/Project1/callTimer/Debug/../main.cpp:83: undefined reference to `pthread_create'
+collect2: error: ld returned 1 exit status
+make: *** [callTimer] Error 1
+"make all" terminated with exit code 2. Build might be incomplete.
+
+21:04:53 Build Failed. 3 errors, 2 warnings. (took 680ms)
+

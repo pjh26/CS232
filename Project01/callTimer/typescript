@@ -1,0 +1,853 @@
+Script started on Tue 12 Feb 2019 01:42:26 PM EST
+pjh26@maroon22:~/232/Project1/callTimer$ ls
+Debug  main.cpp  NanoTimer.h  typescript
+pjh26@maroon22:~/232/Project1/callTimer$ cat main.cpp Nanot Timer.h
+/* main.cpp	Gathers average time it takes to create a new process or thread
+ * Student:	Peter Haagsma
+ * Date:	02/13/2019
+ */
+
+#include <iostream>
+#include <sys/types.h>
+#include <unistd.h>
+#include <string>
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <sys/wait.h>
+#include "NanoTimer.h"
+#include <sys/syscall.h>
+
+using namespace std;
+
+/** Created threads run this function to print out their ID and exit
+
+*/
+void *PrintThreadID(void *threadid) {
+	printf("Hello from the child (TID = %ld)\n", syscall(__NR_gettid));
+	pthread_exit(NULL);
+
+}
+
+/** Main program:	takes in user arguments and outputs average time to create threads or processes
+	@params: 		List of strings seperated by spaces
+*/
+int main(int argc, char* argv[]) {
+	string str;
+	bool Process = false;
+	bool Thread  = false;
+	int num = 1;
+
+	// This for loop parses the list of input args and determines what the user wants
+	for (int i = 1; i < (argc); i++) {
+		str = argv[i];
+		if (str == "-p") {
+			Process = true;
+		} else if (str == "-process") {
+			Process = true;
+		} else if (str == "-t") {
+			Thread = true;
+		} else if (str == "-thread") {
+			Thread = true;
+		} else if (str.substr(0, 2) == "-r") {
+			if (str.length() > 2) {
+				num = atoi(str.substr(2).c_str());
+			}
+			if (num < 1) {
+				cout << "Please pick a valid number of repeats!!" << endl;
+				return 1;
+			}
+		} else {
+			cout << "Please enter valid commands!!" << endl;
+			return 1;
+		}
+	}
+
+	double processTime;
+	double  threadTime;
+	NanoTimer timer;
+
+	// If the user wants to time processes
+	if (Process) {
+		// Then we create and time the desired number of processes
+		for (int i = 0; i < num; i++) {
+			timer.start();
+			pid_t pid = fork();
+			timer.stop();
+			// In the child process, pid = 0 so only the children run these 3 lines
+			if (pid == 0) {
+				int id = getpid();
+				printf("Hello from the child process (PID = %d)\n", id);
+				exit(0);
+			}
+			// Parent waits for child
+			wait(NULL);
+		}
+		//Here we calculate the average time it took and restart the timer
+		processTime = (timer.getTotalTime())/(num);
+		timer.reset();
+	}
+
+	// If the user wants to time threads
+	if (Thread) {
+		pthread_t threads[num];
+		int t_int;
+		// Then we create and time the desired number of threads
+		for (long i = 0; i < num; i++) {
+			timer.start();
+			t_int = pthread_create(&threads[i], NULL, PrintThreadID, (void *)i);
+			timer.stop();
+			// Thread equivalent of wait
+			(void) pthread_join(threads[i], NULL);
+		}
+
+		// Here we calculate the average time it took
+		threadTime = (timer.getTotalTime())/(num);
+	}
+
+	// And finally output the desired information
+	if (Process) printf("Average process was %f\n", processTime);
+	if (Thread) printf("Average thread was %f\n", threadTime);
+}
+
+// We made it!/* NanoTimer.h provides a simple nano-scale timer.
+ *
+ * Begun by: John Kloosterman, for CS 232 at Calvin College.
+ * Enhanced by: Prof. Adams.
+ *
+ * To use this class, compile/link with the '-lrt' switch.
+ *
+ * In Eclipse: Project > Properties > GCC C++ Linker > Libraries > Libraries > +, add 'rt'
+ */
+
+#ifndef NANO_TIMER_H_
+#define NANO_TIMER_H_
+
+#include <ctime>        // timespec, clock_gettime(), etc.
+#include <iostream>     // C++ I/O
+#include <iomanip>      // setprecision()
+#include <sstream>      // stringstream for in-memory formatting
+using namespace std;
+
+class NanoTimer {
+public:
+	NanoTimer()                  { myTotalTime = 0.0; }
+	void start();
+	void stop();
+	void reset()                 { myTotalTime = 0.0; }
+    string asString() const;
+	double getTotalTime() const  { return myTotalTime; }
+	double asDouble() const;
+
+private:
+	struct timespec myStart;
+	struct timespec myEnd;
+	double myTotalTime;
+};
+
+
+/* start the timer.
+ * Postcondition: myStart contains the current time.
+ */
+inline
+void NanoTimer::start() {
+	clock_gettime(CLOCK_MONOTONIC, &myStart);
+}
+
+/* stop the timer.
+ * Postcondition: myStop contains the current time.
+ */
+inline
+void NanoTimer::stop() {
+	clock_gettime(CLOCK_MONOTONIC, &myEnd);
+	myTotalTime += this->asDouble();
+}
+
+const long NSEC_PER_SEC = 1000000000;
+
+/* Utility function to compute time differences
+ *  (used by asString(), asDouble(), etc.
+ * Receive: end, begin, two timespec values.
+ * Return: end - begin
+ * Based on: http://www.gnu.org/s/libc/manual/html_node/Elapsed-Time.html
+ */
+inline
+timespec operator-(const timespec& end, const timespec& begin)
+{
+	timespec result = begin;
+	/* Perform the carry for the later subtraction. */
+	if (end.tv_nsec < begin.tv_nsec) {
+		int nsec = (begin.tv_nsec - end.tv_nsec) / NSEC_PER_SEC + 1;
+		result.tv_nsec -= NSEC_PER_SEC * nsec;
+		result.tv_sec += nsec;
+	}
+	if (end.tv_nsec - begin.tv_nsec > NSEC_PER_SEC) {
+		int nsec = (end.tv_nsec - begin.tv_nsec) / NSEC_PER_SEC;
+		result.tv_nsec += NSEC_PER_SEC * nsec;
+		result.tv_sec -= nsec;
+	}
+
+	/* Compute the time remaining to wait.
+            tv_usec is certainly positive. */
+	result.tv_sec = end.tv_sec - result.tv_sec;
+	result.tv_nsec = end.tv_nsec - result.tv_nsec;
+
+	return result;
+}
+
+/* String representation.
+ * Return: the processor time (user + system) 
+ *    used in the interval between calls to start() and stop(),
+ *    with nanosecond granularity, as a string.
+ */
+inline
+string NanoTimer::asString() const {
+    struct timespec diff = myEnd - myStart;
+    stringstream sstr;
+    sstr << diff.tv_sec 
+         << ( (diff.tv_sec == 1) ? " sec, " : " secs, " )
+         << diff.tv_nsec 
+         << " nsecs";
+    return sstr.str();
+}
+
+/* Double representation.
+ * Return: the processor time (user + system)
+ *    used in the interval between calls to start() and stop(),
+ *    with nanosecond granularity, as a double.
+ */
+inline
+double NanoTimer::asDouble() const {
+   struct timespec diff = myEnd - myStart;
+   return double(diff.tv_sec) + double(diff.tv_nsec) / double(NSEC_PER_SEC);
+}
+
+
+/* ostream output
+ * Receive: out, an ostream; aTimer, a NanoTimer.
+ * Postcondition: aTimer's double representation
+ *      has been inserted into out.
+ * Return: out (for chaining).
+ */
+inline
+ostream& operator<<(ostream& out, const NanoTimer& aTimer) {
+   out << fixed << showpoint << setprecision(9)
+	   << aTimer.getTotalTime();
+   return out;
+}
+
+/* Utility function to display a timespec structure's values
+ *  (for debugging purposes)
+ */
+inline
+ostream& operator<<(ostream& out, const struct timespec& ts) {
+   out << ts.tv_sec 
+       << ( (ts.tv_sec == 1) ? " sec, " : " secs, " )
+       << ts.tv_nsec 
+       << " nsecs";
+   return out;
+}
+
+#endif /* NANO_TIMER_H_ */
+
+pjh26@maroon22:~/232/Project1/callTimer$ cd Ceb   Debug
+pjh26@maroon22:~/232/Project1/callTimer/Debug$ ls
+callTimer  main.d  main.o  makefile  objects.mk  sources.mk  subdir.mk
+pjh26@maroon22:~/232/Project1/callTimer/Debug$ make all
+Building file: ../main.cpp
+Invoking: GCC C++ Compiler
+g++ -O0 -g3 -Wall -c -fmessage-length=0 -MMD -MP -MF"main.d" -MT"main.o" -o "main.o" "../main.cpp"
+[01m[K../main.cpp:[m[K In function '[01m[Kint main(int, char**)[m[K':
+[01m[K../main.cpp:90:7:[m[K [01;35m[Kwarning: [m[Kvariable '[01m[Kt_int[m[K' set but not used [-Wunused-but-set-variable]
+   int t_int;
+[01;32m[K       ^[m[K
+Finished building: ../main.cpp
+ 
+Building target: callTimer
+Invoking: GCC C++ Linker
+g++  -o "callTimer"  ./main.o    -pthread
+Finished building target: callTimer
+ 
+pjh26@maroon22:~/232/Project1/callTimer/Debug$ make al
+make: *** No rule to make target 'al'.  Stop.
+pjh26@maroon22:~/232/Project1/callTimer/Debug$ make all
+make: Nothing to be done for 'all'.
+pjh26@maroon22:~/232/Project1/callTimer/Debug$  cd ..
+pjh26@maroon22:~/232/Project1/callTimer$ ./Debug/callTimer -p -t -r
+Hello from the child process (PID = 884)
+Hello from the child (TID = 885)
+Average process was 0.000146
+Average thread was 0.000111
+pjh26@maroon22:~/232/Project1/callTimer$ ./Debug/callTimer -p -t -r5
+Hello from the child process (PID = 888)
+Hello from the child process (PID = 889)
+Hello from the child process (PID = 892)
+Hello from the child process (PID = 893)
+Hello from the child process (PID = 894)
+Hello from the child (TID = 895)
+Hello from the child (TID = 896)
+Hello from the child (TID = 897)
+Hello from the child (TID = 898)
+Hello from the child (TID = 899)
+Average process was 0.000148
+Average thread was 0.000049
+pjh26@maroon22:~/232/Project1/callTimer$ ./Debug/callTimer -p -t -r5        -oogabooga   o
+Please enter valid commands!!
+pjh26@maroon22:~/232/Project1/callTimer$ ./Debug/callTimer -p -oogaboo         
+Hello from the child process (PID = 904)
+Average process was 0.000139
+pjh26@maroon22:~/232/Project1/callTimer$ ./Debug/callTimer -p -r10
+Hello from the child process (PID = 906)
+Hello from the child process (PID = 907)
+Hello from the child process (PID = 908)
+Hello from the child process (PID = 909)
+Hello from the child process (PID = 910)
+Hello from the child process (PID = 911)
+Hello from the child process (PID = 912)
+Hello from the child process (PID = 913)
+Hello from the child process (PID = 919)
+Hello from the child process (PID = 920)
+Average process was 0.000151
+pjh26@maroon22:~/232/Project1/callTimer$ ./Debug/callTimer -p -r10[1P[1@t
+Hello from the child (TID = 922)
+Hello from the child (TID = 923)
+Hello from the child (TID = 924)
+Hello from the child (TID = 926)
+Hello from the child (TID = 927)
+Hello from the child (TID = 928)
+Hello from the child (TID = 929)
+Hello from the child (TID = 931)
+Hello from the child (TID = 933)
+Hello from the child (TID = 934)
+Average thread was 0.000033
+pjh26@maroon22:~/232/Project1/callTimer$ ./Debug/callTimer -t -r10      process 10  -thread -5 r- 5
+Hello from the child process (PID = 946)
+Hello from the child process (PID = 948)
+Hello from the child process (PID = 952)
+Hello from the child process (PID = 953)
+Hello from the child process (PID = 955)
+Hello from the child (TID = 957)
+Hello from the child (TID = 958)
+Hello from the child (TID = 959)
+Hello from the child (TID = 960)
+Hello from the child (TID = 961)
+Average process was 0.000151
+Average thread was 0.000053
+pjh26@maroon22:~/232/Project1/callTimer$ ./Debug/callTimer -process -thread -r5                     
+pjh26@maroon22:~/232/Project1/callTimer$ ./Debug/callTimer                 ./Debug/callTimer -process -thread -r5             -p -thread -t -r4 5
+Hello from the child process (PID = 979)
+Hello from the child process (PID = 980)
+Hello from the child process (PID = 981)
+Hello from the child process (PID = 982)
+Hello from the child process (PID = 983)
+Hello from the child (TID = 984)
+Hello from the child (TID = 985)
+Hello from the child (TID = 986)
+Hello from the child (TID = 987)
+Hello from the child (TID = 988)
+Average process was 0.000151
+Average thread was 0.000052
+pjh26@maroon22:~/232/Project1/callTimer$ script      clear
+[3;J[H[2Jpjh26@maroon22:~/232/Project1/callTimer$ c script
+Script started, file is typescript
+pjh26@maroon22:~/232/Project1/callTimer$ ls
+Debug  main.cpp  NanoTimer.h  typescript
+pjh26@maroon22:~/232/Project1/callTimer$ cat main.cpp NanoTimer.h
+/* main.cpp	Gathers average time it takes to create a new process or thread
+ * Student:	Peter Haagsma
+ * Date:	02/13/2019
+ */
+
+#include <iostream>
+#include <sys/types.h>
+#include <unistd.h>
+#include <string>
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <sys/wait.h>
+#include "NanoTimer.h"
+#include <sys/syscall.h>
+
+using namespace std;
+
+/** Created threads run this function to print out their ID and exit
+
+*/
+void *PrintThreadID(void *threadid) {
+	printf("Hello from the child (TID = %ld)\n", syscall(__NR_gettid));
+	pthread_exit(NULL);
+
+}
+
+/** Main program:	takes in user arguments and outputs average time to create threads or processes
+	@params: 		List of strings seperated by spaces
+*/
+int main(int argc, char* argv[]) {
+	string str;
+	bool Process = false;
+	bool Thread  = false;
+	int num = 1;
+
+	// This for loop parses the list of input args and determines what the user wants
+	for (int i = 1; i < (argc); i++) {
+		str = argv[i];
+		if (str == "-p") {
+			Process = true;
+		} else if (str == "-process") {
+			Process = true;
+		} else if (str == "-t") {
+			Thread = true;
+		} else if (str == "-thread") {
+			Thread = true;
+		} else if (str.substr(0, 2) == "-r") {
+			if (str.length() > 2) {
+				num = atoi(str.substr(2).c_str());
+			}
+			if (num < 1) {
+				cout << "Please pick a valid number of repeats!!" << endl;
+				return 1;
+			}
+		} else {
+			cout << "Please enter valid commands!!" << endl;
+			return 1;
+		}
+	}
+
+	double processTime;
+	double  threadTime;
+	NanoTimer timer;
+
+	// If the user wants to time processes
+	if (Process) {
+		// Then we create and time the desired number of processes
+		for (int i = 0; i < num; i++) {
+			timer.start();
+			pid_t pid = fork();
+			timer.stop();
+			// In the child process, pid = 0 so only the children run these 3 lines
+			if (pid == 0) {
+				int id = getpid();
+				printf("Hello from the child process (PID = %d)\n", id);
+				exit(0);
+			}
+			// Parent waits for child
+			wait(NULL);
+		}
+		//Here we calculate the average time it took and restart the timer
+		processTime = (timer.getTotalTime())/(num);
+		timer.reset();
+	}
+
+	// If the user wants to time threads
+	if (Thread) {
+		pthread_t threads[num];
+		int t_int;
+		// Then we create and time the desired number of threads
+		for (long i = 0; i < num; i++) {
+			timer.start();
+			t_int = pthread_create(&threads[i], NULL, PrintThreadID, (void *)i);
+			timer.stop();
+			// Thread equivalent of wait
+			(void) pthread_join(threads[i], NULL);
+		}
+
+		// Here we calculate the average time it took
+		threadTime = (timer.getTotalTime())/(num);
+	}
+
+	// And finally output the desired information
+	if (Process) printf("Average process was %f\n", processTime);
+	if (Thread) printf("Average thread was %f\n", threadTime);
+}
+
+// We made it!/* NanoTimer.h provides a simple nano-scale timer.
+ *
+ * Begun by: John Kloosterman, for CS 232 at Calvin College.
+ * Enhanced by: Prof. Adams.
+ *
+ * To use this class, compile/link with the '-lrt' switch.
+ *
+ * In Eclipse: Project > Properties > GCC C++ Linker > Libraries > Libraries > +, add 'rt'
+ */
+
+#ifndef NANO_TIMER_H_
+#define NANO_TIMER_H_
+
+#include <ctime>        // timespec, clock_gettime(), etc.
+#include <iostream>     // C++ I/O
+#include <iomanip>      // setprecision()
+#include <sstream>      // stringstream for in-memory formatting
+using namespace std;
+
+class NanoTimer {
+public:
+	NanoTimer()                  { myTotalTime = 0.0; }
+	void start();
+	void stop();
+	void reset()                 { myTotalTime = 0.0; }
+    string asString() const;
+	double getTotalTime() const  { return myTotalTime; }
+	double asDouble() const;
+
+private:
+	struct timespec myStart;
+	struct timespec myEnd;
+	double myTotalTime;
+};
+
+
+/* start the timer.
+ * Postcondition: myStart contains the current time.
+ */
+inline
+void NanoTimer::start() {
+	clock_gettime(CLOCK_MONOTONIC, &myStart);
+}
+
+/* stop the timer.
+ * Postcondition: myStop contains the current time.
+ */
+inline
+void NanoTimer::stop() {
+	clock_gettime(CLOCK_MONOTONIC, &myEnd);
+	myTotalTime += this->asDouble();
+}
+
+const long NSEC_PER_SEC = 1000000000;
+
+/* Utility function to compute time differences
+ *  (used by asString(), asDouble(), etc.
+ * Receive: end, begin, two timespec values.
+ * Return: end - begin
+ * Based on: http://www.gnu.org/s/libc/manual/html_node/Elapsed-Time.html
+ */
+inline
+timespec operator-(const timespec& end, const timespec& begin)
+{
+	timespec result = begin;
+	/* Perform the carry for the later subtraction. */
+	if (end.tv_nsec < begin.tv_nsec) {
+		int nsec = (begin.tv_nsec - end.tv_nsec) / NSEC_PER_SEC + 1;
+		result.tv_nsec -= NSEC_PER_SEC * nsec;
+		result.tv_sec += nsec;
+	}
+	if (end.tv_nsec - begin.tv_nsec > NSEC_PER_SEC) {
+		int nsec = (end.tv_nsec - begin.tv_nsec) / NSEC_PER_SEC;
+		result.tv_nsec += NSEC_PER_SEC * nsec;
+		result.tv_sec -= nsec;
+	}
+
+	/* Compute the time remaining to wait.
+            tv_usec is certainly positive. */
+	result.tv_sec = end.tv_sec - result.tv_sec;
+	result.tv_nsec = end.tv_nsec - result.tv_nsec;
+
+	return result;
+}
+
+/* String representation.
+ * Return: the processor time (user + system) 
+ *    used in the interval between calls to start() and stop(),
+ *    with nanosecond granularity, as a string.
+ */
+inline
+string NanoTimer::asString() const {
+    struct timespec diff = myEnd - myStart;
+    stringstream sstr;
+    sstr << diff.tv_sec 
+         << ( (diff.tv_sec == 1) ? " sec, " : " secs, " )
+         << diff.tv_nsec 
+         << " nsecs";
+    return sstr.str();
+}
+
+/* Double representation.
+ * Return: the processor time (user + system)
+ *    used in the interval between calls to start() and stop(),
+ *    with nanosecond granularity, as a double.
+ */
+inline
+double NanoTimer::asDouble() const {
+   struct timespec diff = myEnd - myStart;
+   return double(diff.tv_sec) + double(diff.tv_nsec) / double(NSEC_PER_SEC);
+}
+
+
+/* ostream output
+ * Receive: out, an ostream; aTimer, a NanoTimer.
+ * Postcondition: aTimer's double representation
+ *      has been inserted into out.
+ * Return: out (for chaining).
+ */
+inline
+ostream& operator<<(ostream& out, const NanoTimer& aTimer) {
+   out << fixed << showpoint << setprecision(9)
+	   << aTimer.getTotalTime();
+   return out;
+}
+
+/* Utility function to display a timespec structure's values
+ *  (for debugging purposes)
+ */
+inline
+ostream& operator<<(ostream& out, const struct timespec& ts) {
+   out << ts.tv_sec 
+       << ( (ts.tv_sec == 1) ? " sec, " : " secs, " )
+       << ts.tv_nsec 
+       << " nsecs";
+   return out;
+}
+
+#endif /* NANO_TIMER_H_ */
+
+pjh26@maroon22:~/232/Project1/callTimer$ cd Debug
+pjh26@maroon22:~/232/Project1/callTimer/Debug$ makd e all
+make: Nothing to be done for 'all'.
+pjh26@maroon22:~/232/Project1/callTimer/Debug$ cd ..
+pjh26@maroon22:~/232/Project1/callTimer$ ./Debug/proj    callTimer -p -t -r100
+Hello from the child process (PID = 2279)
+Hello from the child process (PID = 2280)
+Hello from the child process (PID = 2281)
+Hello from the child process (PID = 2282)
+Hello from the child process (PID = 2283)
+Hello from the child process (PID = 2284)
+Hello from the child process (PID = 2285)
+Hello from the child process (PID = 2286)
+Hello from the child process (PID = 2287)
+Hello from the child process (PID = 2288)
+Hello from the child process (PID = 2289)
+Hello from the child process (PID = 2290)
+Hello from the child process (PID = 2291)
+Hello from the child process (PID = 2292)
+Hello from the child process (PID = 2293)
+Hello from the child process (PID = 2294)
+Hello from the child process (PID = 2295)
+Hello from the child process (PID = 2296)
+Hello from the child process (PID = 2297)
+Hello from the child process (PID = 2298)
+Hello from the child process (PID = 2299)
+Hello from the child process (PID = 2300)
+Hello from the child process (PID = 2301)
+Hello from the child process (PID = 2302)
+Hello from the child process (PID = 2303)
+Hello from the child process (PID = 2304)
+Hello from the child process (PID = 2305)
+Hello from the child process (PID = 2306)
+Hello from the child process (PID = 2307)
+Hello from the child process (PID = 2308)
+Hello from the child process (PID = 2309)
+Hello from the child process (PID = 2310)
+Hello from the child process (PID = 2311)
+Hello from the child process (PID = 2312)
+Hello from the child process (PID = 2313)
+Hello from the child process (PID = 2314)
+Hello from the child process (PID = 2315)
+Hello from the child process (PID = 2316)
+Hello from the child process (PID = 2317)
+Hello from the child process (PID = 2318)
+Hello from the child process (PID = 2319)
+Hello from the child process (PID = 2320)
+Hello from the child process (PID = 2321)
+Hello from the child process (PID = 2322)
+Hello from the child process (PID = 2323)
+Hello from the child process (PID = 2324)
+Hello from the child process (PID = 2325)
+Hello from the child process (PID = 2326)
+Hello from the child process (PID = 2327)
+Hello from the child process (PID = 2328)
+Hello from the child process (PID = 2329)
+Hello from the child process (PID = 2330)
+Hello from the child process (PID = 2331)
+Hello from the child process (PID = 2332)
+Hello from the child process (PID = 2333)
+Hello from the child process (PID = 2334)
+Hello from the child process (PID = 2335)
+Hello from the child process (PID = 2336)
+Hello from the child process (PID = 2337)
+Hello from the child process (PID = 2338)
+Hello from the child process (PID = 2339)
+Hello from the child process (PID = 2340)
+Hello from the child process (PID = 2341)
+Hello from the child process (PID = 2342)
+Hello from the child process (PID = 2343)
+Hello from the child process (PID = 2344)
+Hello from the child process (PID = 2345)
+Hello from the child process (PID = 2346)
+Hello from the child process (PID = 2347)
+Hello from the child process (PID = 2348)
+Hello from the child process (PID = 2349)
+Hello from the child process (PID = 2350)
+Hello from the child process (PID = 2351)
+Hello from the child process (PID = 2352)
+Hello from the child process (PID = 2353)
+Hello from the child process (PID = 2354)
+Hello from the child process (PID = 2355)
+Hello from the child process (PID = 2356)
+Hello from the child process (PID = 2357)
+Hello from the child process (PID = 2358)
+Hello from the child process (PID = 2359)
+Hello from the child process (PID = 2360)
+Hello from the child process (PID = 2361)
+Hello from the child process (PID = 2362)
+Hello from the child process (PID = 2363)
+Hello from the child process (PID = 2364)
+Hello from the child process (PID = 2365)
+Hello from the child process (PID = 2366)
+Hello from the child process (PID = 2367)
+Hello from the child process (PID = 2368)
+Hello from the child process (PID = 2369)
+Hello from the child process (PID = 2370)
+Hello from the child process (PID = 2371)
+Hello from the child process (PID = 2372)
+Hello from the child process (PID = 2373)
+Hello from the child process (PID = 2374)
+Hello from the child process (PID = 2375)
+Hello from the child process (PID = 2376)
+Hello from the child process (PID = 2377)
+Hello from the child process (PID = 2378)
+Hello from the child (TID = 2379)
+Hello from the child (TID = 2380)
+Hello from the child (TID = 2381)
+Hello from the child (TID = 2382)
+Hello from the child (TID = 2383)
+Hello from the child (TID = 2384)
+Hello from the child (TID = 2385)
+Hello from the child (TID = 2386)
+Hello from the child (TID = 2387)
+Hello from the child (TID = 2388)
+Hello from the child (TID = 2389)
+Hello from the child (TID = 2390)
+Hello from the child (TID = 2391)
+Hello from the child (TID = 2392)
+Hello from the child (TID = 2393)
+Hello from the child (TID = 2394)
+Hello from the child (TID = 2395)
+Hello from the child (TID = 2396)
+Hello from the child (TID = 2397)
+Hello from the child (TID = 2398)
+Hello from the child (TID = 2399)
+Hello from the child (TID = 2400)
+Hello from the child (TID = 2401)
+Hello from the child (TID = 2402)
+Hello from the child (TID = 2403)
+Hello from the child (TID = 2404)
+Hello from the child (TID = 2405)
+Hello from the child (TID = 2406)
+Hello from the child (TID = 2407)
+Hello from the child (TID = 2408)
+Hello from the child (TID = 2409)
+Hello from the child (TID = 2410)
+Hello from the child (TID = 2411)
+Hello from the child (TID = 2412)
+Hello from the child (TID = 2413)
+Hello from the child (TID = 2414)
+Hello from the child (TID = 2415)
+Hello from the child (TID = 2416)
+Hello from the child (TID = 2417)
+Hello from the child (TID = 2418)
+Hello from the child (TID = 2419)
+Hello from the child (TID = 2420)
+Hello from the child (TID = 2421)
+Hello from the child (TID = 2422)
+Hello from the child (TID = 2423)
+Hello from the child (TID = 2424)
+Hello from the child (TID = 2425)
+Hello from the child (TID = 2426)
+Hello from the child (TID = 2427)
+Hello from the child (TID = 2428)
+Hello from the child (TID = 2429)
+Hello from the child (TID = 2430)
+Hello from the child (TID = 2431)
+Hello from the child (TID = 2432)
+Hello from the child (TID = 2433)
+Hello from the child (TID = 2434)
+Hello from the child (TID = 2435)
+Hello from the child (TID = 2436)
+Hello from the child (TID = 2437)
+Hello from the child (TID = 2438)
+Hello from the child (TID = 2439)
+Hello from the child (TID = 2440)
+Hello from the child (TID = 2441)
+Hello from the child (TID = 2442)
+Hello from the child (TID = 2443)
+Hello from the child (TID = 2444)
+Hello from the child (TID = 2445)
+Hello from the child (TID = 2446)
+Hello from the child (TID = 2447)
+Hello from the child (TID = 2448)
+Hello from the child (TID = 2449)
+Hello from the child (TID = 2450)
+Hello from the child (TID = 2451)
+Hello from the child (TID = 2452)
+Hello from the child (TID = 2453)
+Hello from the child (TID = 2454)
+Hello from the child (TID = 2455)
+Hello from the child (TID = 2456)
+Hello from the child (TID = 2457)
+Hello from the child (TID = 2458)
+Hello from the child (TID = 2459)
+Hello from the child (TID = 2460)
+Hello from the child (TID = 2461)
+Hello from the child (TID = 2462)
+Hello from the child (TID = 2463)
+Hello from the child (TID = 2464)
+Hello from the child (TID = 2465)
+Hello from the child (TID = 2466)
+Hello from the child (TID = 2467)
+Hello from the child (TID = 2468)
+Hello from the child (TID = 2469)
+Hello from the child (TID = 2470)
+Hello from the child (TID = 2471)
+Hello from the child (TID = 2472)
+Hello from the child (TID = 2473)
+Hello from the child (TID = 2474)
+Hello from the child (TID = 2475)
+Hello from the child (TID = 2476)
+Hello from the child (TID = 2477)
+Hello from the child (TID = 2478)
+Average process was 0.000125
+Average thread was 0.000022
+pjh26@maroon22:~/232/Project1/callTimer$ ./Debug/callTimer -p -t -r100         
+Hello from the child process (PID = 2483)
+Average process was 0.000146
+pjh26@maroon22:~/232/Project1/callTimer$ ./Debug/callTimer -p tp -t -r100          t
+Hello from the child (TID = 2485)
+Average thread was 0.000066
+pjh26@maroon22:~/232/Project1/callTimer$ ./Debug/callTimer -t p -t
+Hello from the child process (PID = 2487)
+Hello from the child (TID = 2488)
+Average process was 0.000143
+Average thread was 0.000097
+pjh26@maroon22:~/232/Project1/callTimer$ ./Debug/callTimer -p -t    process -thread
+Hello from the child process (PID = 2492)
+Hello from the child (TID = 2493)
+Average process was 0.000141
+Average thread was 0.000102
+pjh26@maroon22:~/232/Project1/callTimer$ ./Debug/callTimer -process -thread               thread -process
+Hello from the child process (PID = 2495)
+Hello from the child (TID = 2496)
+Average process was 0.000142
+Average thread was 0.000096
+pjh26@maroon22:~/232/Project1/callTimer$ ./Debug/callTimer -thread -process               r3 -p   t -p
+Hello from the child process (PID = 2499)
+Hello from the child process (PID = 2500)
+Hello from the child process (PID = 2501)
+Hello from the child (TID = 2502)
+Hello from the child (TID = 2503)
+Hello from the child (TID = 2504)
+Average process was 0.000151
+Average thread was 0.000050
+pjh26@maroon22:~/232/Project1/callTimer$ - ./Debug/callTimer -r3 -t -p        O Allyouranimalsarebelongto u  us
+Please enter valid commands!!
+pjh26@maroon22:~/232/Project1/callTimer$ ./Debug/callTimer -Allyouranimalsarebelongtous                           No -U
+Please enter valid commands!!
+pjh26@maroon22:~/232/Project1/callTimer$ ./Debug/callTimer -No -U     r11 00
+pjh26@maroon22:~/232/Project1/callTimer$ exit
+Script done, file is typescript
+pjh26@maroon22:~/232/Project1/callTimer$ a2ps typescript
+[typescript (plain): 8 pages on 4 sheets]
+request id is Calvin_UniFLOW-8 (0 file(s))
+[Total: 8 pages on 4 sheets] sent to the default printer
+[20 lines wrapped]
+pjh26@maroon22:~/232/Project1/callTimer$ exit
