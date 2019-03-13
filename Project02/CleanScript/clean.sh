@@ -1,10 +1,12 @@
 #!/bin/sh
 
 cleanup() (
+
 	myDir="$PWD"
 	s=""
 	q=""
 	i=""
+	FILE_COUNTER="0"
 	for input in $*
 	do
 		case $input in
@@ -52,6 +54,7 @@ cleanup() (
 		if test -d $item;
 		then
 			cleanup "$item$s$q$i"
+			FILE_COUNTER=$(($? + $FILE_COUNTER))
 			continue
 		fi
 
@@ -88,10 +91,62 @@ cleanup() (
 
 		if test "$remove" = "true";
 		then
-			echo $item
+
+			if test "$i" != "";
+			then
+				echo "Would you like to delete '$item'? [Y/N]"
+				read userInput
+				case $userInput in
+					Y | y 	)
+						echo "Deleting $item"
+						;;
+					N | n 	)
+						echo "Keeping $item"
+						continue
+						;;
+				esac
+			fi
+
+			if test "$q$i" = "";
+			then
+				echo $item
+			fi
+
+			rm $item
+
+			FILE_COUNTER=$(($FILE_COUNTER + 1))
+
 		fi
 
 	done
+
+	return $FILE_COUNTER
 )
 
+
+
+
+INITIAL_USAGE=$(du -s -b)
+
 cleanup $*
+FILE_COUNTER=$?
+
+FINAL_USAGE=$(du -s -b)
+
+case $* in
+	*-s* | *--stats*	)
+		if test "$FILE_COUNTER" != "0";
+		then
+			INITIAL_USAGE=${INITIAL_USAGE%??}
+			FINAL_USAGE=${FINAL_USAGE%??}
+
+			spaceSaved=$(($INITIAL_USAGE - $FINAL_USAGE))
+
+			echo "You saved $spaceSaved bytes"
+			echo "and deleted $FILE_COUNTER files"
+		else
+			echo "No files found to be deleted!!"
+			echo $FILE_COUNTER
+		fi
+		;;
+esac
