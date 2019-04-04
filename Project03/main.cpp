@@ -1,13 +1,12 @@
-/***
+/**
 
 */
 
-#include "Path.h"
-#include "Prompt.h"
-#include <iostream>
+#include "SPShell.h"
 
-int main(int argc, char** argv) {
-	Prompt p = Prompt();
-	string testStr = p.get();
-	cout << "\n" << testStr << endl;
+using namespace std;
+
+int main() {
+	SPShell shell = SPShell();
+	shell.run();
 }

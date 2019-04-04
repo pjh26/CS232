@@ -1,0 +1,931 @@
+Script started on Tue 02 Apr 2019 08:51:57 PM EDT
+pjh26@gold10:~/CS232/Project03$ c la s
+CommandLine.cpp  main.cpp  Path.cpp  project	    Prompt.h  SPShell.cpp  typescript
+CommandLine.h	 main.o    Path.h    Project03.zip  Prompt.o  SPShell.h    XYShell.o
+CommandLine.o	 makefile  Path.o    Prompt.cpp     SPShell   SPShell.o
+pjh26@gold10:~/CS232/Project03$ cat *c .cpp *.h
+//
+//  CommandLine.cpp
+//  project03
+//
+//  Created by Sameer Mall on 3/19/19.
+//  Copyright © 2019 Sameer Mall. All rights reserved.
+//
+
+#include "CommandLine.h"
+#include <iostream>
+#include <string.h>
+using namespace std;
+
+/*
+ * CommandLine() default constructor
+ */
+CommandLine::CommandLine() {
+    argc = 0;
+    noAmp = true;
+}
+
+/*
+ * CommandLine() explicit constructor
+ * @params: istream& in
+ * Desription: construct a command line by reading a command-line from in, parsing it, and building instance
+ * variables for argc and argv
+ */
+CommandLine::CommandLine(istream& in) {
+
+	ostringstream oss;
+	oss << in.rdbuf();
+	string str = oss.str();
+    noAmp = true;
+
+	//cout << str << endl;
+	int n = str.length();
+
+	char char_array[n+1];
+	strcpy(char_array, str.c_str());
+
+	char *arr;
+	int len;
+	argc = 0;
+	vector<char*> temp;
+
+	//array that separates the char_array by spaces
+	char *token = strtok(char_array, " ");
+	while(token != NULL) {
+		len = strlen(token);
+		arr = (char *)calloc(len, sizeof(char));
+		if (strcmp(token, "&") == 0) {
+			noAmp = false;
+		} else {
+			for(int i=0; i < len; i++) {
+				arr[i] = token[i];
+			}
+			temp.push_back(arr);
+			argc++;
+		}
+
+		token = strtok(NULL, " ");
+
+	}
+
+	argv = new char*[temp.size()];
+
+	for (unsigned i = 0; i < temp.size(); i++) {
+			argv[i] = temp[i];
+	}
+}
+
+/*
+ * getCommand() method
+ * @params: none
+ * return a pointer to the command portion of the command line
+ */
+char* CommandLine::getCommand() const {
+    return argv[0];
+}
+
+/*
+ * getArgCount() method
+ * @params: none
+ * return the number of command-line arguments on the commandline
+ */
+int CommandLine::getArgCount() const {
+    return argc;
+}
+
+/*
+ * getArgVector method
+ * @params: none
+ * return a pointer to a char* array, each entry of which points to one 'word' of the command-line
+ */
+char ** CommandLine::getArgVector() const {
+    return argv;
+}
+
+/*
+ * getArgVector method
+ * @params: int i
+ * return a pointer to the ith (zero-relative) command-line 'word'
+ */
+char * CommandLine::getArgVector(int i) const {
+    return argv[i];
+}
+
+/*
+ * noAmpersand method
+ * @params: none
+ * return no_ampersand value
+ */
+bool CommandLine::noAmpersand() const {
+	return noAmp;
+}
+
+/*
+ * ~CommandLine()
+ * Destructor for the CommandLine class
+ * reclaim memory from argv to avoid leaking memory
+ */
+CommandLine::~CommandLine() {
+	for (int i = 0; i < argc; i++) {
+		delete[] argv[i];
+	}
+	delete[] argv;
+}
+
+/**
+
+*/
+
+#include "SPShell.h"
+
+using namespace std;
+
+int main() {
+	SPShell shell = SPShell();
+	shell.run();
+}
+/** Path.cpp	Defines the implementation of the path class
+
+*	Project03
+
+*   Student:	Peter Haagsma
+
+*   Date:		03/26/2019
+
+*/
+
+
+
+#include "Path.h"
+
+#include <string>
+
+#include <vector>
+
+#include <stdlib.h>
+
+#include <string.h>
+
+#include <iostream>
+
+#include <dirent.h>
+
+#include <sys/types.h>
+
+
+
+using namespace std;
+
+
+
+/**	Path()
+
+*
+
+*		This is the constructor for the path class. It creates a list of all possible
+
+* 		paths from the path environment variable
+
+*  		@param: none
+
+*		return: none
+
+*/
+
+Path::Path() {
+
+	char* progPath = getenv("PATH");
+
+	char* tokenPointer;
+
+
+
+	// Set up token pointer
+
+	tokenPointer = strtok(progPath, ":"); 
+
+	while (tokenPointer != NULL) {
+
+		myDirectories.push_back(tokenPointer);
+
+		tokenPointer = strtok(NULL, ":");
+
+	}
+
+}
+
+
+
+/**	find(string program)
+
+*
+
+* 		This function searches myDirectories for a given program
+
+* 		@param: string program - name of desired program
+
+*		return: index of myDirectories containing the desired program, or -1 if the 
+
+*				program is not found
+
+*/
+
+int Path::find(const string& program) const {
+
+	int index = 0;
+
+	if (program == ".." || program == ".") {
+
+		index = -1;
+
+	}
+
+	DIR* dir;
+
+	struct dirent* dirEnt;
+
+	for (unsigned i = 0; i < myDirectories.size(); i++) {
+
+		if ((dir = opendir(myDirectories[i])) != NULL) {
+
+			while ((dirEnt = readdir(dir)) != NULL) {
+
+				if (dirEnt->d_name == program) {
+
+					index = i;
+
+				}
+
+				readdir_r(dir, dirEnt, &dirEnt);
+
+			}
+
+		}
+
+		closedir(dir);
+
+	}
+
+	return index;
+
+}
+
+
+
+/** getDirectory(int i) 
+
+*
+
+*		This function is a getter for myDirectories, it is given an index and
+
+*		returns the path at that index
+
+*		@param: int index
+
+*		return: char* path at index
+
+*/
+
+char* Path::getDirectory(int i) const {
+
+	char* dir = myDirectories[i];
+
+
+
+	return dir;
+
+}
+
+/** Prompt.cpp	Defines the implementation of the path class
+
+*	Project03
+
+*   Student:	Peter Haagsma
+
+*   Date:		03/26/2019
+
+*/
+
+
+
+#include <unistd.h>
+
+#include <limits.h>
+
+#include "Prompt.h"
+
+
+
+using namespace std;
+
+
+
+/**	Prompt()
+
+*
+
+*		This is the constructor for the prompt class. it gets the current working directory
+
+*		and customizes it to look nice
+
+*		@param: none
+
+*		return: none
+
+*/
+
+Prompt::Prompt() {
+
+	curDir = getcwd(buff, PATH_MAX + 1);
+
+	curDir = curDir + "/SPShell$ ";
+
+}
+
+
+
+/**	get()
+
+*
+
+*		This function simply returns the current working directory as a string
+
+*		@param: none
+
+*		return: string current Directory
+
+*/
+
+string Prompt::get() const {
+
+	return curDir;
+
+}
+
+/*
+ * SPShell.cpp
+ *
+ *  Created on: Mar 27, 2019
+ *      Author: sjw34
+ */
+#include "SPShell.h"
+#include <sys/wait.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+using namespace std;
+
+SPShell::SPShell() {
+
+}
+
+void SPShell::run() {
+	Prompt pr = Prompt();
+	Path pa = Path();
+
+	while(true) {
+		string input;
+		cout << pr.get();
+    
+		//get the input from the user
+		getline(cin, input);
+		//prevents from a making an empty copy which throws a segmentation fault
+		if (input == "") {
+			continue;
+		}
+
+		istringstream aStream(input);
+
+		CommandLine cla = CommandLine(aStream);
+
+		//if user enters exit return from while loop
+		if (strcmp(cla.getCommand(), "exit") == 0) {
+			cout << "Program terminated!" << endl;
+			return;
+      
+		//if the command was cd then change directory with chdir()
+		} else if (strcmp(cla.getCommand(), "cd") == 0) {
+			int return_val = chdir(cla.getArgVector(1));
+			if (return_val == -1) {
+				cout << return_val << endl;
+				cout << "Invalid directory name..." << endl;
+			} else {
+				pr = Prompt();
+			}
+			continue;
+		
+    	//if command was pwd then output the working directory
+		} else if (strcmp(cla.getCommand(), "pwd") == 0) {
+			string pwd = pr.get();
+			int pos = pwd.find("SPShell");
+    		//cuts the string up until SPShell
+			cout << pwd.substr(0,pos) << endl;
+			continue;
+		
+    	// if the pa.find returns a -1 then the command cannot be found and we return 
+    	// to the beginning of the loop
+		} else if (pa.find(cla.getCommand()) == -1) {
+			cout << "Command not found!!" << endl;
+			continue;
+    
+    	// If none of the if statements catch then we try to run the program
+		} else {
+    
+			pid_t pid = fork();
+			// Child will see pid as 0
+			if (pid == 0) {
+				int index = pa.find(cla.getCommand());
+				char* dir = pa.getDirectory(index);
+				strcat(dir, "/");
+				strcat(dir, cla.getCommand());
+				char** argVec = cla.getArgVector();
+				argVec[cla.getArgCount()] = NULL;
+
+				execve(dir, argVec, environ);
+        		// exit(0);
+			}
+			
+      		// If there was no ampersand then we wait for the child to finish
+			if (cla.noAmpersand() == true) {
+				// Parent waits for child
+				int status;
+				waitpid(pid, &status, 0);
+			}
+
+		}
+	}
+}
+//
+//  CommandLine.hpp
+//  project03
+//
+//  Created by Sameer Mall on 3/19/19.
+//  Copyright © 2019 Sameer Mall. All rights reserved.
+//
+
+#ifndef CommandLine_h
+#define CommandLine_h
+
+#include <stdio.h>
+#include <iostream>
+#include <string.h>
+#include <stdlib.h>
+#include <sstream>
+#include <vector>
+
+using namespace std;
+class CommandLine {
+
+// Methods
+public:
+    CommandLine();
+    CommandLine(istream& in);
+    char* getCommand() const;
+    int getArgCount() const;
+    char ** getArgVector() const;
+    char * getArgVector(int i) const;
+    bool noAmpersand() const;
+    ~CommandLine();
+
+// Instance variables
+private:
+    int argc;
+    bool noAmp;
+    char** argv;
+};
+
+
+#endif /* CommandLine_h */
+
+/** Path.h
+*	Project03
+*   Student:	Peter Haagsma
+*   Date:		03/26/2019
+*/
+
+#ifndef PATH_H_
+#define PATH_H_
+
+#include <string>
+#include <vector>
+#include <stdlib.h>
+#include <string.h>
+#include <iostream>
+#include <dirent.h>
+#include <sys/types.h>
+
+class Path {
+public:
+	Path();
+	int find(const std::string& program) const;
+	char* getDirectory(int i) const;
+private:
+	std::vector<char*> myDirectories;
+};
+
+#endif /* PATH_H_ *//** Prompt.h
+*	Project03
+*   Student:	Peter Haagsma
+*   Date:		03/26/2019
+*/
+
+#ifndef PROMPT_H_
+#define PROMPT_H_
+
+#include <string>
+
+class Prompt {
+public:
+	Prompt();
+	std::string get() const;
+private:
+	std::string curDir;
+	char buff[PATH_MAX];
+};
+
+#endif /* PROMPT_H_ *//*
+ * SPShell.h
+ *
+ *  Created on: Mar 27, 2019
+ *      Author: sjw34
+ */
+
+#ifndef SPSHELL_H_
+#define SPSHELL_H_
+
+
+#include <stdio.h>
+#include <iostream>
+#include <vector>
+#include <string.h>
+#include <stdlib.h>
+#include <sstream>
+#include "Path.h"
+#include "Prompt.h"
+#include "CommandLine.h"
+
+class SPShell {
+public:
+	SPShell();
+	void run();
+};
+
+
+
+#endif /* SPSHELL_H_ */
+pjh26@gold10:~/CS232/Project03$ make
+make: 'SPShell' is up to date.
+pjh26@gold10:~/CS232/Project03$ ./SPShell
+/home/pjh26/CS232/Project03/SPShell$ ls
+CommandLine.cpp  main.cpp  Path.cpp  project	    Prompt.h  SPShell.cpp  typescript
+CommandLine.h	 main.o    Path.h    Project03.zip  Prompt.o  SPShell.h    XYShell.o
+CommandLine.o	 makefile  Path.o    Prompt.cpp     SPShell   SPShell.o
+/home/pjh26/CS232/Project03/SPShell$ cd ..
+/home/pjh26/CS232/SPShell$ pwd
+/home/pjh26/CS232/
+/home/pjh26/CS232/SPShell$ cd Project03
+/home/pjh26/CS232/Project03/SPShell$ ls -a
+.		 makefile		       .nfs0000000005fa0db9000001e5  Path.h	    SPShell
+..		 .nfs0000000005fa08db000001dc  .nfs0000000005fa0dbb000001f9  Path.o	    SPShell.cpp
+CommandLine.cpp  .nfs0000000005fa08dc000001cd  .nfs0000000005fa0e81000001fd  project	    SPShell.h
+CommandLine.h	 .nfs0000000005fa08e4000001da  .nfs0000000005fa0edf00000204  Project03.zip  SPShell.o
+CommandLine.o	 .nfs0000000005fa0a0a000001db  .nfs0000000005fa0f1800000205  Prompt.cpp     typescript
+main.cpp	 .nfs0000000005fa0a28000001de  .nfs0000000005fa0f9500000209  Prompt.h	    XYShell.o
+main.o		 .nfs0000000005fa0c59000001df  Path.cpp			     Prompt.o
+/home/pjh26/CS232/Project03/SPShell$ ls -l /home/cs/
+total 100
+drwxrwsr-x 3 admin facstf         4096 Jan 24 07:30 101
+drwxrwsr-x 5 admin facstf         4096 Jan 23 09:56 106
+drwxrwsr-x 3 admin facstf         4096 Jan 23 10:47 108
+drwxrwsr-x 5 admin facstf         4096 Jan 23 10:47 112
+drwxrwsr-x 2 admin facstf         4096 Jan 23 09:57 202
+drwxrwsr-x 2 admin facstf         4096 Jan 23 09:59 212
+drwxrwsr-x 4 admin facstf         4096 Jan 23 10:48 214
+drwxrwsr-x 5 admin facstf         4096 Apr  2 11:44 232
+drwxrwsr-x 2 admin facstf         4096 Jan 23 10:24 262
+drwxrwsr-x 2 admin facstf         4096 Jan 23 10:24 300
+drwxrwsr-x 2 admin facstf         4096 Jan 23 10:25 312
+drwxrwsr-x 4 admin facstf         4096 Jan 23 10:29 332
+drwxrwsr-x 2 admin facstf         4096 Jan 23 10:29 336
+drwxrwsr-x 2 admin facstf         4096 Jan 23 10:29 337
+drwxrwsr-x 2 admin facstf         4096 Jan 23 10:44 342
+drwxrwsr-x 3 admin facstf         4096 Jan 23 10:48 344
+drwxrwsr-x 3 admin facstf         4096 Jan 23 10:48 352
+drwxrwsr-x 2 admin facstf         4096 Jan 23 10:45 364
+drwxrwsr-x 4 admin facstf         4096 Jan 23 10:46 374
+drwxrwsr-x 2 admin facstf         4096 Jan 23 10:46 384
+drwxrwsr-x 2 admin facstf         4096 Jan 23 10:46 390
+drwxrwsr-x 2 admin facstf         4096 Jan 23 10:46 394
+drwxrwsr-x 2 admin facstf         4096 Jan 23 10:46 398
+drwxrwsr-x 3 admin seniorprojects 4096 May 17  2018 seniorprojects
+drwxrwsr-x 3 admin facstf         4096 Jan 23 10:47 w61
+/home/pjh26/CS232/Project03/SPShell$ psw  wd
+/home/pjh26/CS232/Project03/
+/home/pjh26/CS232/Project03/SPShell$ ps -ax &
+/home/pjh26/CS232/Project03/SPShell$   PID TTY      STAT   TIME COMMAND
+    1 ?        Ss     0:01 /sbin/init nomdmonddf nomdmonisw dis_ucode_ldr
+    2 ?        S      0:00 [kthreadd]
+    4 ?        I<     0:00 [kworker/0:0H]
+    6 ?        I<     0:00 [mm_percpu_wq]
+    7 ?        S      0:00 [ksoftirqd/0]
+    8 ?        I      0:02 [rcu_sched]
+    9 ?        I      0:00 [rcu_bh]
+   10 ?        S      0:00 [migration/0]
+   11 ?        S      0:00 [watchdog/0]
+   12 ?        S      0:00 [cpuhp/0]
+   13 ?        S      0:00 [cpuhp/1]
+   14 ?        S      0:00 [watchdog/1]
+   15 ?        S      0:00 [migration/1]
+   16 ?        S      0:00 [ksoftirqd/1]
+   18 ?        I<     0:00 [kworker/1:0H]
+   19 ?        S      0:00 [cpuhp/2]
+   20 ?        S      0:00 [watchdog/2]
+   21 ?        S      0:00 [migration/2]
+   22 ?        S      0:00 [ksoftirqd/2]
+   24 ?        I<     0:00 [kworker/2:0H]
+   25 ?        S      0:00 [cpuhp/3]
+   26 ?        S      0:00 [watchdog/3]
+   27 ?        S      0:00 [migration/3]
+   28 ?        S      0:00 [ksoftirqd/3]
+   30 ?        I<     0:00 [kworker/3:0H]
+   31 ?        S      0:00 [cpuhp/4]
+   32 ?        S      0:00 [watchdog/4]
+   33 ?        S      0:00 [migration/4]
+   34 ?        S      0:00 [ksoftirqd/4]
+   36 ?        I<     0:00 [kworker/4:0H]
+   37 ?        S      0:00 [cpuhp/5]
+   38 ?        S      0:00 [watchdog/5]
+   39 ?        S      0:00 [migration/5]
+   40 ?        S      0:00 [ksoftirqd/5]
+   42 ?        I<     0:00 [kworker/5:0H]
+   43 ?        S      0:00 [cpuhp/6]
+   44 ?        S      0:00 [watchdog/6]
+   45 ?        S      0:00 [migration/6]
+   46 ?        S      0:00 [ksoftirqd/6]
+   48 ?        I<     0:00 [kworker/6:0H]
+   49 ?        S      0:00 [cpuhp/7]
+   50 ?        S      0:00 [watchdog/7]
+   51 ?        S      0:00 [migration/7]
+   52 ?        S      0:00 [ksoftirqd/7]
+   54 ?        I<     0:00 [kworker/7:0H]
+   55 ?        S      0:00 [kdevtmpfs]
+   56 ?        I<     0:00 [netns]
+   57 ?        S      0:00 [rcu_tasks_kthre]
+   58 ?        S      0:00 [kauditd]
+   62 ?        S      0:00 [khungtaskd]
+   63 ?        S      0:00 [oom_reaper]
+   64 ?        I<     0:00 [writeback]
+   65 ?        S      0:00 [kcompactd0]
+   66 ?        SN     0:00 [ksmd]
+   67 ?        SN     0:00 [khugepaged]
+   68 ?        I<     0:00 [crypto]
+   69 ?        I<     0:00 [kintegrityd]
+   70 ?        I<     0:00 [kblockd]
+   76 ?        I<     0:00 [ata_sff]
+   77 ?        I<     0:00 [md]
+   78 ?        I<     0:00 [edac-poller]
+   79 ?        I<     0:00 [devfreq_wq]
+   80 ?        I<     0:00 [watchdogd]
+   83 ?        S      0:03 [kswapd0]
+   84 ?        S      0:00 [ecryptfs-kthrea]
+  126 ?        I<     0:00 [kthrotld]
+  127 ?        I<     0:00 [acpi_thermal_pm]
+  131 ?        I<     0:00 [ipv6_addrconf]
+  140 ?        I<     0:00 [kstrp]
+  157 ?        I<     0:00 [charger_manager]
+  218 ?        S      0:00 [scsi_eh_0]
+  219 ?        I<     0:00 [scsi_tmf_0]
+  220 ?        S      0:00 [scsi_eh_1]
+  221 ?        I<     0:00 [scsi_tmf_1]
+  222 ?        S      0:00 [scsi_eh_2]
+  223 ?        I<     0:00 [scsi_tmf_2]
+  224 ?        S      0:00 [scsi_eh_3]
+  225 ?        I<     0:00 [scsi_tmf_3]
+  226 ?        S      0:00 [scsi_eh_4]
+  227 ?        I<     0:00 [scsi_tmf_4]
+  228 ?        S      0:00 [scsi_eh_5]
+  229 ?        I<     0:00 [scsi_tmf_5]
+  234 ?        S      0:00 [nvidia-modeset]
+  241 ?        I<     0:00 [kworker/6:1H]
+  264 ?        S      0:00 [jbd2/sda5-8]
+  265 ?        I<     0:00 [ext4-rsv-conver]
+  312 ?        Ss     0:00 /lib/systemd/systemd-journald
+  328 ?        I<     0:00 [rpciod]
+  330 ?        I<     0:00 [xprtiod]
+  359 ?        Ss     0:00 /lib/systemd/systemd-udevd
+  373 ?        I<     0:00 [kworker/0:1H]
+  375 ?        S<     0:00 [loop0]
+  376 ?        S<     0:00 [loop1]
+  380 ?        S<     0:00 [loop2]
+  382 ?        I<     0:00 [kworker/3:1H]
+  383 ?        I<     0:00 [kworker/5:1H]
+  384 ?        S<     0:00 [loop3]
+  386 ?        I<     0:00 [kworker/1:1H]
+  389 ?        S<     0:00 [loop4]
+  439 ?        I<     0:00 [kworker/4:1H]
+  552 ?        S      0:00 [irq/28-mei_me]
+  558 ?        I<     0:00 [kworker/2:1H]
+  616 ?        I<     0:03 [kworker/7:1H]
+  696 ?        Ss     0:00 /usr/sbin/rpc.gssd
+  737 ?        S      0:00 [UVM global queu]
+  738 ?        S      0:00 [UVM Tools Event]
+  915 ?        Ss     0:00 /usr/sbin/acpid
+  920 ?        Ss     0:01 /usr/sbin/sssd -i -f
+  924 ?        Ss     0:00 /usr/sbin/inetd -i
+  926 ?        Ss     0:00 avahi-daemon: running [gold10.local]
+  934 ?        Ss     0:00 /usr/sbin/cron -f
+  937 ?        Ss     0:01 /usr/bin/dbus-daemon --system --address=systemd: --nofork --nopidfile --systemd-
+  939 ?        S      0:00 avahi-daemon: chroot helper
+  940 ?        Ssl    0:00 /usr/sbin/NetworkManager --no-daemon
+  942 ?        Ss     0:00 /usr/sbin/atd -f
+  945 ?        Ss     0:00 /usr/sbin/cupsd -l
+  949 ?        Ssl    0:00 /usr/sbin/cups-browsed
+  953 ?        Ssl    0:00 /usr/sbin/rsyslogd -n
+  954 ?        Ssl    0:03 /usr/lib/snapd/snapd
+ 1005 ?        S      0:03 /usr/lib/x86_64-linux-gnu/sssd/sssd_be --domain cs.calvin.edu --uid 0 --gid 0 --
+ 1006 ?        Ssl    0:00 /usr/lib/colord/colord
+ 1017 ?        I<     0:00 [iprt-VBoxWQueue]
+ 1020 ?        S      0:00 /usr/lib/postgresql/9.5/bin/postgres -D /var/lib/postgresql/9.5/main -c config_f
+ 1023 ?        S      0:00 [iprt-VBoxTscThr]
+ 1031 ?        S      0:01 /usr/lib/x86_64-linux-gnu/sssd/sssd_nss --uid 0 --gid 0 --debug-to-files
+ 1032 ?        S      0:00 /usr/lib/x86_64-linux-gnu/sssd/sssd_sudo --uid 0 --gid 0 --debug-to-files
+ 1033 ?        S      0:00 /usr/lib/x86_64-linux-gnu/sssd/sssd_pam --uid 0 --gid 0 --debug-to-files
+ 1034 ?        S      0:00 /usr/lib/x86_64-linux-gnu/sssd/sssd_ssh --uid 0 --gid 0 --debug-to-files
+ 1035 ?        S      0:00 /usr/lib/x86_64-linux-gnu/sssd/sssd_pac --uid 0 --gid 0 --debug-to-files
+ 1040 ?        Ss     0:00 /lib/systemd/systemd-logind
+ 1041 ?        Ssl    0:00 /usr/lib/accountsservice/accounts-daemon
+ 1059 ?        Ssl    0:00 /usr/lib/policykit-1/polkitd --no-debug
+ 1112 ?        Ss     0:00 postgres: checkpointer process   
+ 1113 ?        Ss     0:00 postgres: writer process   
+ 1114 ?        Ss     0:00 postgres: wal writer process   
+ 1115 ?        Ss     0:00 postgres: autovacuum launcher process   
+ 1116 ?        Ss     0:00 postgres: stats collector process   
+ 1313 ?        Ss     0:00 /sbin/dhclient -1 -v -pf /run/dhclient.enp0s25.pid -lf /var/lib/dhcp/dhclient.en
+ 1422 ?        Ssl    0:28 /usr/bin/mongod --config /etc/mongod.conf
+ 1423 ?        Ss     0:00 /usr/games/bzfs -advertise NONE
+ 1424 ?        Ss     0:00 /usr/sbin/certmonger -S -p /var/run/certmonger.pid -n
+ 1425 ?        Ss     0:00 /usr/sbin/oddjobd -n -p /var/run/oddjobd.pid -t 300
+ 1426 ?        Ss     0:00 /usr/bin/perl /usr/local/scripts/computerinfodaemon.pl
+ 1433 ?        Ssl    0:00 /usr/bin/whoopsie -f
+ 1440 ?        Ss     0:00 /usr/sbin/sshd -D
+ 1460 ?        I<     0:00 [nfsiod]
+ 1489 ?        S      0:00 [NFSv4 callback]
+ 1602 ?        S<L    0:00 /usr/bin/atop -a -w /var/log/atop/atop_20190402 600
+ 1623 ?        SLsl   0:00 /usr/sbin/lightdm
+ 1779 ?        Ss     0:00 /usr/lib/postfix/sbin/master
+ 1781 ?        S      0:00 qmgr -l -t unix -u
+ 1845 ?        Ssl    0:00 /usr/bin/ruby /usr/bin/puppet agent
+ 1861 tty1     Ss+    0:00 /sbin/agetty --noclear tty1 linux
+ 1956 ?        SNsl   0:00 /usr/lib/rtkit/rtkit-daemon
+ 2356 ?        Ss     0:00 /usr/sbin/ntpd -p /var/run/ntpd.pid -c /var/lib/ntp/ntp.conf.dhcp -u 114:121
+ 3723 ?        Ssl    0:00 /usr/lib/upower/upowerd
+ 3884 ?        Ssl    0:00 /usr/lib/udisks2/udisksd --no-debug
+ 3958 ?        S      0:00 /usr/lib/cups/notifier/dbus dbus://
+ 4543 ?        I      0:00 [kworker/2:0]
+ 4564 tty7     Ss+    3:54 /usr/lib/xorg/Xorg -core :0 -seat seat0 -auth /var/run/lightdm/root/:0 -nolisten
+ 4568 ?        Ss     0:00 /usr/bin/nvidia-persistenced --user root --no-persistence-mode --verbose
+ 4569 ?        S      0:08 [irq/30-nvidia]
+ 4570 ?        S      0:00 [nvidia]
+ 9756 ?        Sl     0:00 lightdm --session-child 13 22
+ 9762 ?        I      0:00 [kworker/u16:1]
+ 9770 ?        Ss     0:00 /lib/systemd/systemd --user
+ 9771 ?        S      0:00 (sd-pam)
+ 9777 ?        Ss     0:00 /sbin/upstart --user
+ 9845 ?        S      0:00 upstart-udev-bridge --daemon --user
+ 9847 ?        Ss     0:00 ssh-agent -s
+ 9852 ?        Ss     0:00 dbus-daemon --fork --session --address=unix:abstract=/tmp/dbus-WenP7sljUm
+ 9890 ?        S      0:00 upstart-dbus-bridge --daemon --session --user --bus-name session
+ 9892 ?        S      0:00 upstart-file-bridge --daemon --user
+ 9894 ?        S      0:00 upstart-dbus-bridge --daemon --system --user --bus-name system
+ 9899 ?        Ss     0:00 gpg-agent --homedir /home/pjh26/.gnupg --use-standard-socket --daemon
+ 9908 ?        Ss     0:00 /bin/sh /etc/xdg/xfce4/xinitrc -- /etc/X11/xinit/xserverrc
+ 9919 ?        Sl     0:00 xfce4-session
+ 9924 ?        S      0:00 /usr/lib/x86_64-linux-gnu/xfce4/xfconf/xfconfd
+ 9931 ?        S      0:13 xfwm4 --replace
+ 9935 ?        Sl     0:04 xfce4-panel
+ 9937 ?        Sl     0:06 Thunar --daemon
+ 9939 ?        Sl     0:01 xfdesktop
+ 9941 ?        Sl     0:00 nm-applet
+ 9942 ?        Sl     0:00 /usr/bin/python3 /usr/share/system-config-printer/applet.py
+ 9943 ?        Sl     0:00 /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1
+ 9944 ?        Sl     0:00 update-notifier
+ 9948 ?        Sl     0:00 /usr/bin/python3 /usr/bin/blueman-applet
+ 9950 ?        Ssl    0:00 xfsettingsd
+ 9959 ?        Sl     0:00 light-locker
+ 9960 ?        Ssl    0:00 xfce4-power-manager
+ 9968 ?        S      0:01 xscreensaver -no-splash
+ 9975 ?        Ssl    0:00 xfce4-volumed
+ 9977 ?        Sl     0:00 /usr/lib/at-spi2-core/at-spi-bus-launcher
+ 9984 ?        S      0:00 /usr/bin/dbus-daemon --config-file=/etc/at-spi2/accessibility.conf --nofork --pr
+ 9986 ?        Sl     0:00 /usr/lib/dconf/dconf-service
+ 9990 ?        Sl     0:01 /usr/lib/at-spi2-core/at-spi2-registryd --use-gnome-session
+ 9997 ?        Sl     0:00 /usr/lib/gvfs/gvfsd
+10002 ?        Sl     0:00 /usr/lib/gvfs/gvfsd-fuse /run/user/51408/gvfs -f -o big_writes
+10019 ?        S<l    0:00 /usr/bin/pulseaudio --start --log-target=syslog
+10027 ?        Sl     0:00 /usr/lib/x86_64-linux-gnu/xfce4/panel/wrapper-1.0 /usr/lib/x86_64-linux-gnu/xfce
+10033 ?        S      0:00 /usr/lib/x86_64-linux-gnu/xfce4/panel/wrapper-1.0 /usr/lib/x86_64-linux-gnu/xfce
+10045 ?        Sl     0:00 /usr/lib/x86_64-linux-gnu/xfce4/panel/wrapper-2.0 /usr/lib/x86_64-linux-gnu/xfce
+10046 ?        Sl     0:11 /usr/lib/x86_64-linux-gnu/xfce4/panel/wrapper-1.0 /usr/lib/x86_64-linux-gnu/xfce
+10053 ?        S      0:00 upstart --user --startup-event indicator-services-start
+10055 ?        Ssl    0:00 /usr/lib/x86_64-linux-gnu/indicator-messages/indicator-messages-service
+10056 ?        Ssl    0:00 /usr/lib/x86_64-linux-gnu/indicator-bluetooth/indicator-bluetooth-service
+10057 ?        Ssl    0:00 /usr/lib/x86_64-linux-gnu/indicator-power/indicator-power-service
+10058 ?        Ssl    0:00 /usr/lib/x86_64-linux-gnu/indicator-datetime/indicator-datetime-service
+10059 ?        Ssl    0:00 /usr/lib/x86_64-linux-gnu/indicator-keyboard/indicator-keyboard-service --use-gt
+10060 ?        Ssl    0:00 /usr/lib/x86_64-linux-gnu/indicator-sound/indicator-sound-service
+10061 ?        Ssl    0:00 /usr/lib/x86_64-linux-gnu/indicator-session/indicator-session-service
+10067 ?        Ssl    0:00 /usr/lib/x86_64-linux-gnu/indicator-application/indicator-application-service
+10135 ?        I      0:00 [kworker/4:1]
+10146 ?        S      0:00 /usr/lib/bluetooth/obexd
+10152 ?        Sl     0:00 /usr/lib/gvfs/gvfs-udisks2-volume-monitor
+10157 ?        Sl     0:00 /usr/lib/gvfs/gvfs-afc-volume-monitor
+10163 ?        Sl     0:00 /usr/lib/gvfs/gvfs-gphoto2-volume-monitor
+10168 ?        Sl     0:00 /usr/lib/gvfs/gvfs-goa-volume-monitor
+10173 ?        Sl     0:00 /usr/lib/gvfs/gvfs-mtp-volume-monitor
+10181 ?        Sl     0:00 /usr/lib/gvfs/gvfsd-trash --spawner :1.20 /org/gtk/gvfs/exec_spaw/0
+10193 ?        Sl     0:00 /usr/lib/gvfs/gvfsd-metadata
+11858 ?        Sl     1:24 /opt/google/chrome/chrome
+11863 ?        S      0:00 cat
+11864 ?        S      0:00 cat
+11867 ?        S      0:00 /opt/google/chrome/chrome --type=zygote --enable-crash-reporter=8ffd142a-ef3c-41
+11868 ?        S      0:00 /opt/google/chrome/nacl_helper
+11871 ?        S      0:00 /opt/google/chrome/chrome --type=zygote --enable-crash-reporter=8ffd142a-ef3c-41
+11895 ?        Sl     0:42 /opt/google/chrome/chrome --type=gpu-process --field-trial-handle=13526294180853
+11900 ?        Sl     0:11 /opt/google/chrome/chrome --type=utility --field-trial-handle=135262941808535377
+11916 ?        S      0:00 /opt/google/chrome/chrome --type=-broker
+11986 ?        Sl     0:00 /opt/google/chrome/chrome --type=renderer --field-trial-handle=13526294180853537
+11993 ?        Sl     0:02 /opt/google/chrome/chrome --type=renderer --field-trial-handle=13526294180853537
+12000 ?        Sl     0:03 /opt/google/chrome/chrome --type=renderer --field-trial-handle=13526294180853537
+12089 ?        Sl     0:32 /opt/google/chrome/chrome --type=renderer --field-trial-handle=13526294180853537
+12230 ?        Sl     0:03 /opt/google/chrome/chrome --type=renderer --field-trial-handle=13526294180853537
+12304 ?        Sl     0:33 /opt/google/chrome/chrome --type=renderer --field-trial-handle=13526294180853537
+12623 ?        Sl     0:03 /opt/google/chrome/chrome --type=renderer --field-trial-handle=13526294180853537
+12644 ?        Sl     0:01 /opt/google/chrome/chrome --type=renderer --field-trial-handle=13526294180853537
+13214 ?        Sl     0:00 /usr/lib/gvfs/gvfsd-network --spawner :1.20 /org/gtk/gvfs/exec_spaw/1
+13221 ?        Sl     0:00 /usr/lib/gvfs/gvfsd-smb-browse --spawner :1.20 /org/gtk/gvfs/exec_spaw/2
+13230 ?        Sl     0:00 /usr/lib/gvfs/gvfsd-dnssd --spawner :1.20 /org/gtk/gvfs/exec_spaw/3
+13323 ?        I      0:00 [kworker/3:2]
+15276 ?        I      0:00 [kworker/3:1]
+15386 ?        Sl     0:03 /usr/bin/xfce4-terminal
+15390 ?        S      0:00 gnome-pty-helper
+15391 pts/5    Ss     0:00 bash
+15404 pts/5    T      0:00 ./project
+15407 pts/5    T      0:00 ./project
+15568 ?        I      0:00 [kworker/2:1]
+15814 ?        Ssl    0:39 /opt/sublime_text/sublime_text /home/pjh26/CS232/Project03/CommandLine.cpp
+15825 ?        Sl     0:01 /opt/sublime_text/plugin_host 15814 --auto-shell-env
+16078 ?        Sl     0:01 /opt/google/chrome/chrome --type=renderer --field-trial-handle=13526294180853537
+16097 ?        Sl     0:00 /opt/google/chrome/chrome --type=renderer --field-trial-handle=13526294180853537
+16111 ?        Sl     0:00 /opt/google/chrome/chrome --type=renderer --field-trial-handle=13526294180853537
+16127 ?        Sl     0:00 /opt/google/chrome/chrome --type=renderer --field-trial-handle=13526294180853537
+16159 ?        Sl     0:00 /opt/google/chrome/chrome --type=renderer --field-trial-handle=13526294180853537
+16173 ?        I      0:00 [kworker/0:2]
+16176 ?        Sl     0:00 /opt/google/chrome/chrome --type=renderer --field-trial-handle=13526294180853537
+16210 ?        Sl     0:00 /opt/google/chrome/chrome --type=renderer --field-trial-handle=13526294180853537
+16287 pts/5    T      0:00 ./SPShell
+16397 pts/5    T      0:00 ./SPShell
+16439 pts/5    T      0:00 ./SPShell
+16450 ?        I      0:00 [kworker/1:1]
+16451 pts/5    T      0:00 ./SPShell
+16452 pts/5    T      0:00 ./SPShell
+16533 ?        I      0:00 [kworker/5:0]
+16605 pts/5    T      0:00 ./SPShell
+16628 pts/5    T      0:00 ./SPShell
+16636 pts/5    T      0:00 ./SPShell
+16640 pts/5    T      0:00 ./SPShell
+16663 pts/5    T      0:00 ./SPShell
+16692 pts/5    T      0:00 ./SPShell
+17752 pts/5    T      0:00 ./SPShell
+17963 ?        I      0:00 [kworker/1:0]
+17967 ?        I      0:00 [kworker/6:0]
+18030 ?        I      0:00 [kworker/4:0]
+18241 ?        I      0:00 [kworker/5:1]
+18325 pts/5    T      0:00 ./SPShell
+18473 ?        I      0:00 [kworker/6:2]
+18585 pts/5    T      0:00 ./SPShell
+18615 pts/5    T      0:00 ./SPShell
+18694 ?        I      0:00 [kworker/0:0]
+18719 ?        Sl     0:00 /opt/google/chrome/chrome --type=renderer --field-trial-handle=13526294180853537
+18759 pts/5    T      0:00 ./SPShell
+18867 pts/5    T      0:00 ./SPShell
+18992 ?        I      0:00 [kworker/7:0]
+19024 ?        I      0:00 [kworker/u16:0]
+19067 ?        S      0:00 pickup -l -t unix -u -c
+19163 ?        I      0:00 [kworker/7:1]
+19188 ?        I      0:00 [kworker/u16:2]
+19288 ?        I      0:00 [kworker/5:2]
+19293 ?        I      0:00 [kworker/0:1]
+19297 ?        I      0:00 [kworker/3:0]
+19369 pts/5    S+     0:00 script
+19370 pts/11   Ss     0:00 bash -i
+19388 ?        I      0:00 [kworker/u16:3]
+19390 pts/11   S+     0:00 ./SPShell
+19394 pts/11   R+     0:00 ps -ax
+asdf
+/home/pjh26/CS232/Project03/SPShell$ ls -?
+ls: invalid option -- '?'
+Try 'ls --help' for more information.
+/home/pjh26/CS232/Project03/SPShell$ exit
+Program terminated!
+
+Script done on Tue 02 Apr 2019 08:53:21 PM EDT

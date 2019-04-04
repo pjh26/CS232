@@ -25,7 +25,7 @@ public:
 	void quit();
 protected:
 	string USER_INPUT;
-
+ 
 };
 
 /** displayResults(processTime, threadTime)
