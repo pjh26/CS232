@@ -1,0 +1,786 @@
+Script started on Tue 30 Apr 2019 09:27:16 PM EDT
+]0;root@mradmin-VirtualBox: /home/mradmin/Desktoproot@mradmin-VirtualBox:/home/mradmin/Desktop# cd /usr/src/linux-source-4.15.0/
+]0;root@mradmin-VirtualBox: /usr/src/linux-source-4.15.0root@mradmin-VirtualBox:/usr/src/linux-source-4.15.0# c[Kcat arch/x86/entry/syscalss/sysca[K[K[K[K[K[K[K[Kls/syscall_64.tbl
+#
+# 64-bit system call numbers and entry vectors
+#
+# The format is:
+# <number> <abi> <name> <entry point>
+#
+# The abi is "common", "64" or "x32" for this file.
+#
+0	common	read			sys_read
+1	common	write			sys_write
+2	common	open			sys_open
+3	common	close			sys_close
+4	common	stat			sys_newstat
+
+*** DELETED LINES ***
+
+329	common	pkey_mprotect		sys_pkey_mprotect
+330	common	pkey_alloc		sys_pkey_alloc
+331	common	pkey_free		sys_pkey_free
+332	common	statx			sys_statx
+333	common	printName		sys_printName
+334	common	fillTeamArray		sys_fillTeamArray
+335	common	fillUserArray		sys_fillUserArray
+
+#
+# x32-specific system call numbers start at 512 to avoid cache impact
+# for native 64-bit operation.
+#
+512	x32	rt_sigaction		compat_sys_rt_sigaction
+513	x32	rt_sigreturn		sys32_x32_rt_sigreturn
+514	x32	ioctl			compat_sys_ioctl
+515	x32	readv			compat_sys_readv
+516	x32	writev			compat_sys_writev
+517	x32	recvfrom		compat_sys_recvfrom
+518	x32	sendmsg			compat_sys_sendmsg
+519	x32	recvmsg			compat_sys_recvmsg
+520	x32	execve			compat_sys_execve/ptregs
+521	x32	ptrace			compat_sys_ptrace
+522	x32	rt_sigpending		compat_sys_rt_sigpending
+523	x32	rt_sigtimedwait		compat_sys_rt_sigtimedwait
+524	x32	rt_sigqueueinfo		compat_sys_rt_sigqueueinfo
+525	x32	sigaltstack		compat_sys_sigaltstack
+526	x32	timer_create		compat_sys_timer_create
+527	x32	mq_notify		compat_sys_mq_notify
+528	x32	kexec_load		compat_sys_kexec_load
+529	x32	waitid			compat_sys_waitid
+530	x32	set_robust_list		compat_sys_set_robust_list
+531	x32	get_robust_list		compat_sys_get_robust_list
+532	x32	vmsplice		compat_sys_vmsplice
+533	x32	move_pages		compat_sys_move_pages
+534	x32	preadv			compat_sys_preadv64
+535	x32	pwritev			compat_sys_pwritev64
+536	x32	rt_tgsigqueueinfo	compat_sys_rt_tgsigqueueinfo
+537	x32	recvmmsg		compat_sys_recvmmsg
+538	x32	sendmmsg		compat_sys_sendmmsg
+539	x32	process_vm_readv	compat_sys_process_vm_readv
+540	x32	process_vm_writev	compat_sys_process_vm_writev
+541	x32	setsockopt		compat_sys_setsockopt
+542	x32	getsockopt		compat_sys_getsockopt
+543	x32	io_setup		compat_sys_io_setup
+544	x32	io_submit		compat_sys_io_submit
+545	x32	execveat		compat_sys_execveat/ptregs
+546	x32	preadv2			compat_sys_preadv64v2
+547	x32	pwritev2		compat_sys_pwritev64v2
+]0;root@mradmin-VirtualBox: /usr/src/linux-source-4.15.0root@mradmin-VirtualBox:/usr/src/linux-source-4.15.0# cat kernel/sysc.[K[K.c
+// SPDX-License-Identifier: GPL-2.0
+/*
+ *  linux/kernel/sys.c
+ *
+ *  Copyright (C) 1991, 1992  Linus Torvalds
+ */
+
+#include <linux/export.h>
+#include <linux/mm.h>
+#include <linux/utsname.h>
+
+*** DELETED LINES ***
+
+SYSCALL_DEFINE0(printName)
+{
+	// Print the following message into the log
+	printk(KERN_INFO "Peter Haagsma and Nate Gamble were here.");
+	return 0;
+}
+
+SYSCALL_DEFINE2(fillTeamArray, char *, buf, int, n)
+{
+	int index = 0;
+	char teamName[11] = "nate+peter";
+	int i;
+	//If the buf is larger than the teamname
+	if ( n > 11 ) {
+		//then the index gets 11
+		index = 11;
+	} else {
+		//otherwise index gets buf size
+		index = n;
+	}
+
+	//Store teamname in the buffer
+	for (i = 0; i < index-1; i++) {
+		buf[i] = teamName[i];
+	}
+	return 0;
+}
+
+SYSCALL_DEFINE2(fillUserArray, char *, buf, int, n)
+{
+	int index = 0;
+	int i = 0;
+	const struct user_struct* myUser;
+	long myUid;
+	mm_segment_t fs;
+	char passBuf[1];
+	char username[50];
+	char useruid[11] = {' ', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0'};
+	long useruidlong = 0;
+	int colonCnt = 0;
+	int fd;
+	int uidlength = 0;
+	int userlength = 0;
+
+	//Get the user id
+	myUser = get_current_user();
+	myUid = myUser->uid.val;
+        printk(KERN_INFO "UID is %ld", myUid);
+
+	//Initialize file reading
+	fs = get_fs();
+	set_fs(KERNEL_DS);
+	fd = sys_open("/etc/passwd", O_RDONLY, 0);
+
+	//If the file exists
+	if(fd >= 0) {
+		// Read the file
+		while (sys_read(fd, passBuf, 1) == 1) {
+			//If the current character is a colon increase the colon count
+			if (strncmp(passBuf, ":", 1) == 0) {
+				colonCnt += 1;
+			//If the current char is newline then colonCnt = 0
+			} else if (strncmp(passBuf, "\n", 1) ==0) {
+				colonCnt = 0;
+			} else {
+				//If the colonCnt is 0 then we are looking at the username
+				if (colonCnt == 0) {
+	                                //Store user
+	                                username[userlength] = passBuf[0];
+	                                userlength++;
+				//If the colonCnt is 2 then we are looking at the uid
+	                        } else if (colonCnt == 2) {
+	                                //Store uid
+	                                useruid[uidlength] = passBuf[0];
+	                                uidlength++;
+	                        } else if (colonCnt == 3) {
+	                                //Convert the uid array to an int
+	                                kstrtol(useruid, 10, &useruidlong);
+
+					//If the uid is equal to the one found earlier
+	                                if (myUid == useruidlong) {
+						//then we store the username in the passed buffer
+						if (n > userlength) {
+							index = userlength+1;
+						} else {
+							index = n;
+						}
+
+	                                       for (i = 0; i < index-1; i++) {
+	                                               buf[i] = username[i];
+	                                       }
+	                                       break;
+	                                }
+
+	                                // Clear the username/uid arrays
+	                                for (i = 0; i < uidlength; i++) {
+	                                        useruid[i] = '\0';
+	                                }
+
+	                                for (i = 0; i < userlength; i++) {
+	                                        username[i] = ' ';
+	                                }
+
+	                                uidlength = 0;
+	                        	userlength = 0;
+					colonCnt += 1;
+				}
+			}
+		}
+		sys_close(fd);
+	}
+	set_fs(fs);
+	return 0;
+}
+
+#endif /* CONFIG_COMPAT */
+]0;root@mradmin-VirtualBox: /usr/src/linux-source-4.15.0root@mradmin-VirtualBox:/usr/src/linux-source-4.15.0# c[Kcat include/linux/syscalls.h
+/*
+ * syscalls.h - Linux syscall interfaces (non-arch-specific)
+ *
+ * Copyright (c) 2004 Randy Dunlap
+ * Copyright (c) 2004 Open Source Development Labs
+ *
+ * This file is released under the GPLv2.
+ * See the file COPYING for more details.
+ */
+
+#ifndef _LINUX_SYSCALLS_H
+#define _LINUX_SYSCALLS_H
+
+struct epoll_event;
+struct iattr;
+struct inode;
+
+*** DELETED LINES ***
+
+asmlinkage long sys_printName(void);
+asmlinkage long sys_fillTeamArray(char * buf, int n);
+asmlinkage long sys_fillUserArray(char * buf, int n);
+
+#endif
+]0;root@mradmin-VirtualBox: /usr/src/linux-source-4.15.0root@mradmin-VirtualBox:/usr/src/linux-source-4.15.0# cd /home/mradmin/desk[K[K[K[KDesktop/CS232\ Testing/
+]0;root@mradmin-VirtualBox: /home/mradmin/Desktop/CS232 Testingroot@mradmin-VirtualBox:/home/mradmin/Desktop/CS232 Testing# cat[K[K[Kls
+main.cpp  main.o  makefile  newSysCalls.h  [0m[01;32mtestProj[0m
+]0;root@mradmin-VirtualBox: /home/mradmin/Desktop/CS232 Testingroot@mradmin-VirtualBox:/home/mradmin/Desktop/CS232 Testing# cat newSysCalls.h
+/** newSysCalls.h - Defines the wrappers for the sys calls created for Project 5
+*
+*	Students:	Nate Gamble
+*			Peter Haagsma
+*	Date:		04/30/2019
+*
+*/
+
+
+#include <unistd.h>
+#include <sys/syscall.h>
+
+#define SYS_PRINTNAME 333
+#define SYS_FILLTEAMARRAY 334
+#define SYS_FILLUSERARRAY 335
+
+static inline
+long printName(void) {
+	return syscall(SYS_PRINTNAME);
+}
+
+static inline
+long fillTeamArray(char * buf, int n) {
+	return syscall(SYS_FILLTEAMARRAY, buf, n);
+}
+
+static inline
+long fillUserArray(char * buf, int n) {
+	return syscall(SYS_FILLUSERARRAY, buf, n);
+}
+]0;root@mradmin-VirtualBox: /home/mradmin/Desktop/CS232 Testingroot@mradmin-VirtualBox:/home/mradmin/Desktop/CS232 Testing# cat main.cpp
+/** main.cpp tests the new system calls created for Project 5
+*
+*	Students:	Nate Gamble
+*			Peter Haagsma
+*	Date:		04/30/2019
+*
+*
+*/
+
+#include <stdio.h>
+#include "newSysCalls.h"
+
+int main(int argc, char * argv[]) {
+
+	printf("Invoking print name call...\n");
+
+	long result = printName();
+
+	printf("System call returned %ld\n", result);
+
+
+	printf("\nInvoking fill team array call...\n");
+
+	char myBuf[25] = "";
+	int len = 25;
+	result = fillTeamArray(myBuf, len);
+
+	printf("System call returned %ld\n", result);
+	printf("Buffer now reads\n %s \n", myBuf);
+
+
+	printf("\nInvoking fill user array call...\n");
+
+	char newBuf[15] = "";
+	len = 15;
+	result = fillUserArray(newBuf, len);
+
+	printf("System call returned %ld\n", result);
+	printf("Buffer now reads\n %s \n", newBuf);
+
+
+	return 0;
+}
+]0;root@mradmin-VirtualBox: /home/mradmin/Desktop/CS232 Testingroot@mradmin-VirtualBox:/home/mradmin/Desktop/CS232 Testing# cd /usr/src/linux-source-4.15.0/
+]0;root@mradmin-VirtualBox: /usr/src/linux-source-4.15.0root@mradmin-VirtualBox:/usr/src/linux-source-4.15.0# cd /usr/src/linux-source-4.15.0/[20Pat main.cppnewSysCalls.hls[Kcd /home/mradmin/Desktop/CS232\ Testing/[12Pat include/linux/syscalls.h[12Pkernel/sys.carch/x86/entry/syscalls/syscall_64.tbl[10Pd /usr/src/linux-source-4.15.0/[19Pdpkg -i *.deb[8Pcd ..make-kpkg -j 8 --initrd --append-to-version=nate+peter kernel-image[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[Cnano kernel/sys.c[K[4Pdpkg -i *.deb[8Pcd ..dpkg -i *.debnano kernel/sys.cmake-kpkg -j 8 --initrd --append-to-version=nate+peter kernel-image
+exec make kpkg_version=13.018 -f /usr/share/kernel-package/ruleset/minimal.mk debian APPEND_TO_VERSION=nate+peter  INITRD=YES 
+====== making target debian/stamp/conf/minimal_debian [new prereqs: ]======
+This is kernel package version 13.018.
+test -d debian             || mkdir debian
+test ! -e stamp-building || rm -f stamp-building
+install -p -m 755 /usr/share/kernel-package/rules debian/rules
+for file in ChangeLog  Control  Control.bin86 config templates.in rules; do                                      \
+            cp -f  /usr/share/kernel-package/$file ./debian/;                               \
+        done
+cp: cannot stat '/usr/share/kernel-package/ChangeLog': No such file or directory
+for dir  in Config docs examples ruleset scripts pkg po;  do                                      \
+          cp -af /usr/share/kernel-package/$dir  ./debian/;                                 \
+        done
+test -f debian/control || sed         -e 's/=V/4.15.18nate+peter/g'  \
+                -e 's/=D/4.15.18nate+peter-10.00.Custom/g'         -e 's/=A/amd64/g'  \
+	-e 's/=SA//g'  \
+	-e 's/=I//g'				    \
+	-e 's/=CV/4.15/g'			    \
+	-e 's/=M/Unknown Kernel Package Maintainer <unknown@unconfigured.in.etc.kernel-pkg.conf>/g'			    \
+	-e 's/=ST/linux/g'      -e 's/=B/x86_64/g'    \
+                -e 's/=R/initramfs-tools | linux-initramfs-tool,/g'    /usr/share/kernel-package/Control > debian/control
+test -f debian/changelog ||  sed -e 's/=V/4.15.18nate+peter/g'       \
+            -e 's/=D/4.15.18nate+peter-10.00.Custom/g'        -e 's/=A/amd64/g'       \
+            -e 's/=ST/linux/g'     -e 's/=B/x86_64/g'         \
+            -e 's/=M/Unknown Kernel Package Maintainer <unknown@unconfigured.in.etc.kernel-pkg.conf>/g'                            \
+             /usr/share/kernel-package/changelog > debian/changelog
+chmod 0644 debian/control debian/changelog
+test -d ./debian/stamp || mkdir debian/stamp
+make -f debian/rules debian/stamp/conf/kernel-conf
+make[1]: Entering directory '/usr/src/linux-source-4.15.0'
+====== making target debian/stamp/conf/kernel-conf [new prereqs: ]======
+make EXTRAVERSION=nate+peter   ARCH=x86_64 \
+                    oldconfig;
+make[2]: Entering directory '/usr/src/linux-source-4.15.0'
+scripts/kconfig/conf  --oldconfig Kconfig
+security/Kconfig:393:warning: defaults for choice values not supported
+security/Kconfig:397:warning: defaults for choice values not supported
+security/Kconfig:401:warning: defaults for choice values not supported
+security/Kconfig:405:warning: defaults for choice values not supported
+security/Kconfig:409:warning: defaults for choice values not supported
+#
+# configuration written to .config
+#
+make[2]: Leaving directory '/usr/src/linux-source-4.15.0'
+make EXTRAVERSION=nate+peter   ARCH=x86_64 prepare
+make[2]: Entering directory '/usr/src/linux-source-4.15.0'
+scripts/kconfig/conf  --silentoldconfig Kconfig
+security/Kconfig:393:warning: defaults for choice values not supported
+security/Kconfig:397:warning: defaults for choice values not supported
+security/Kconfig:401:warning: defaults for choice values not supported
+security/Kconfig:405:warning: defaults for choice values not supported
+security/Kconfig:409:warning: defaults for choice values not supported
+  CHK     include/config/kernel.release
+  CHK     include/generated/uapi/linux/version.h
+  CHK     include/generated/utsrelease.h
+  CHK     include/generated/timeconst.h
+  CHK     include/generated/bounds.h
+  CHK     include/generated/asm-offsets.h
+  CALL    scripts/checksyscalls.sh
+  DESCEND  objtool
+make[2]: Leaving directory '/usr/src/linux-source-4.15.0'
+echo done > debian/stamp/conf/kernel-conf
+make[1]: Leaving directory '/usr/src/linux-source-4.15.0'
+make -f debian/rules debian/stamp/conf/full-changelog
+make[1]: Entering directory '/usr/src/linux-source-4.15.0'
+====== making target debian/stamp/conf/full-changelog [new prereqs: ]======
+for file in ChangeLog  Control  Control.bin86 config templates.in rules; do				\
+     cp -f  /usr/share/kernel-package/$file ./debian/;			\
+done
+cp: cannot stat '/usr/share/kernel-package/ChangeLog': No such file or directory
+for dir  in Config docs examples ruleset scripts pkg po;	do				\
+   cp -af /usr/share/kernel-package/$dir  ./debian/;				\
+done
+install -p -m 755 /usr/share/kernel-package/rules debian/rules
+sed         -e 's/=V/4.15.18nate+peter/g'  \
+                -e 's/=D/4.15.18nate+peter-10.00.Custom/g'         -e 's/=A/amd64/g'  \
+	-e 's/=SA//g'  \
+	-e 's/=I//g'				    \
+	-e 's/=CV/4.15/g'			    \
+	-e 's/=M/Unknown Kernel Package Maintainer <unknown@unconfigured.in.etc.kernel-pkg.conf>/g'			    \
+	-e 's/=ST/linux/g'      -e 's/=B/x86_64/g'    \
+                -e 's/=R/initramfs-tools | linux-initramfs-tool,/g'  /usr/share/kernel-package/Control > debian/control
+sed -e 's/=V/4.15.18nate+peter/g' -e 's/=D/4.15.18nate+peter-10.00.Custom/g'	      \
+    -e 's/=A/amd64/g' -e 's/=M/Unknown Kernel Package Maintainer <unknown@unconfigured.in.etc.kernel-pkg.conf>/g' \
+    -e 's/=ST/linux/g'	 -e 's/=B/x86_64/g'	      \
+	/usr/share/kernel-package/changelog > debian/changelog
+chmod 0644 debian/control debian/changelog
+make -f debian/rules debian/stamp/conf/kernel-conf
+make[2]: Entering directory '/usr/src/linux-source-4.15.0'
+make[2]: 'debian/stamp/conf/kernel-conf' is up to date.
+make[2]: Leaving directory '/usr/src/linux-source-4.15.0'
+make[1]: Leaving directory '/usr/src/linux-source-4.15.0'
+echo done > debian/stamp/conf/minimal_debian
+exec debian/rules  APPEND_TO_VERSION=nate+peter  INITRD=YES  kernel-image 
+====== making target debian/stamp/conf/vars [new prereqs: ]======
+
+security/Kconfig:393:warning: defaults for choice values not supported
+security/Kconfig:397:warning: defaults for choice values not supported
+security/Kconfig:401:warning: defaults for choice values not supported
+security/Kconfig:405:warning: defaults for choice values not supported
+security/Kconfig:409:warning: defaults for choice values not supported
+====== making target debian/stamp/build/kernel [new prereqs: vars]======
+This is kernel package version 13.018.
+restore_upstream_debianization
+test ! -f scripts/package/builddeb.kpkg-dist ||	mv -f scripts/package/builddeb.kpkg-dist scripts/package/builddeb
+test ! -f scripts/package/Makefile.kpkg-dist ||	mv -f scripts/package/Makefile.kpkg-dist scripts/package/Makefile
+/usr/bin/make -j8 EXTRAVERSION=nate+peter  ARCH=x86_64 \
+		     bzImage
+make[1]: Entering directory '/usr/src/linux-source-4.15.0'
+scripts/kconfig/conf  --silentoldconfig Kconfig
+security/Kconfig:393:warning: defaults for choice values not supported
+security/Kconfig:397:warning: defaults for choice values not supported
+security/Kconfig:401:warning: defaults for choice values not supported
+security/Kconfig:405:warning: defaults for choice values not supported
+security/Kconfig:409:warning: defaults for choice values not supported
+  CHK     include/config/kernel.release
+  CHK     include/generated/uapi/linux/version.h
+  DESCEND  objtool
+  CHK     include/generated/utsrelease.h
+  CHK     scripts/mod/devicetable-offsets.h
+  CHK     include/generated/timeconst.h
+  CHK     include/generated/bounds.h
+  CHK     include/generated/asm-offsets.h
+  CALL    scripts/checksyscalls.sh
+  CHK     include/generated/compile.h
+  CC      kernel/sys.o
+  AR      kernel/built-in.o
+  GEN     .version
+  CHK     include/generated/compile.h
+  UPD     include/generated/compile.h
+  CC      init/version.o
+  AR      init/built-in.o
+  AR      built-in.o
+  LD      vmlinux.o
+  MODPOST vmlinux.o
+  KSYM    .tmp_kallsyms1.o
+  KSYM    .tmp_kallsyms2.o
+  LD      vmlinux
+  SORTEX  vmlinux
+  SYSMAP  System.map
+  CC      arch/x86/boot/version.o
+  VOFFSET arch/x86/boot/compressed/../voffset.h
+  OBJCOPY arch/x86/boot/compressed/vmlinux.bin
+  RELOCS  arch/x86/boot/compressed/vmlinux.relocs
+  CC      arch/x86/boot/compressed/kaslr.o
+  CC      arch/x86/boot/compressed/misc.o
+  GZIP    arch/x86/boot/compressed/vmlinux.bin.gz
+  MKPIGGY arch/x86/boot/compressed/piggy.S
+  AS      arch/x86/boot/compressed/piggy.o
+  DATAREL arch/x86/boot/compressed/vmlinux
+  LD      arch/x86/boot/compressed/vmlinux
+  OBJCOPY arch/x86/boot/vmlinux.bin
+  ZOFFSET arch/x86/boot/zoffset.h
+  AS      arch/x86/boot/header.o
+  LD      arch/x86/boot/setup.elf
+  OBJCOPY arch/x86/boot/setup.bin
+  BUILD   arch/x86/boot/bzImage
+Setup is 17212 bytes (padded to 17408 bytes).
+System is 7750 kB
+CRC b8638be1
+Kernel: arch/x86/boot/bzImage is ready  (#52)
+make[1]: Leaving directory '/usr/src/linux-source-4.15.0'
+/usr/bin/make -j8 EXTRAVERSION=nate+peter  ARCH=x86_64 \
+		     modules
+make[1]: Entering directory '/usr/src/linux-source-4.15.0'
+  CHK     include/config/kernel.release
+  CHK     include/generated/uapi/linux/version.h
+  DESCEND  objtool
+  CHK     include/generated/utsrelease.h
+  CHK     scripts/mod/devicetable-offsets.h
+  CHK     include/generated/bounds.h
+  CHK     include/generated/timeconst.h
+  CHK     include/generated/asm-offsets.h
+  CALL    scripts/checksyscalls.sh
+  GZIP    kernel/config_data.gz
+  CHK     kernel/config_data.h
+  Building modules, stage 2.
+  MODPOST 41 modules
+make[1]: Leaving directory '/usr/src/linux-source-4.15.0'
+COLUMNS=150 dpkg -l 'gcc*' perl dpkg 'libc6*' binutils make dpkg-dev |\
+ awk '$1 ~ /[hi]i/ { printf("%s-%s\n", $2, $3) }'> debian/stamp/build/info
+uname -a >> debian/stamp/build/info
+echo using the compiler: >> debian/stamp/build/info
+if [ -f include/generated/compile.h ]; then                      \
+   grep LINUX_COMPILER include/generated/compile.h |             \
+     sed -e 's/.*LINUX_COMPILER "//' -e 's/"$//' >>             \
+               debian/stamp/build/info;                                  \
+        elif [ -f include/linux/compile.h  ]; then                       \
+    grep LINUX_COMPILER include/linux/compile.h |                \
+      sed -e 's/.*LINUX_COMPILER "//' -e 's/"$//' >>            \
+                debian/stamp/build/info;                                 \
+         fi
+echo done > debian/stamp/build/kernel
+/usr/bin/make -f ./debian/rules 	debian/stamp/binary/pre-linux-image-4.15.18nate+peter
+make[1]: Entering directory '/usr/src/linux-source-4.15.0'
+====== making target debian/stamp/install/linux-image-4.15.18nate+peter [new prereqs: ]======
+This is kernel package version 13.018.
+rm -f -r .//usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter .//usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter.deb
+install -p -d -o root -g root  -m  755 /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/etc/kernel/postinst.d /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/etc/kernel/preinst.d \
+                  /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/etc/kernel/postrm.d /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/etc/kernel/prerm.d
+install -p -d -o root -g root  -m  755 /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter//boot
+install -p -d -o root -g root  -m  755 /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/usr/share/doc/linux-image-4.15.18nate+peter/examples
+install -p    -o root -g root  -m  644 debian/changelog	/usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/usr/share/doc/linux-image-4.15.18nate+peter/changelog.Debian
+install -p    -o root -g root  -m  644 Documentation/Changes /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/usr/share/doc/linux-image-4.15.18nate+peter/
+test ! -d ./debian/examples/ ||                                     \
+          (cd ./debian; tar cf - examples | (cd /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/usr/share/doc/linux-image-4.15.18nate+peter;  umask 000; tar xsf -));
+install -p    -o root -g root  -m  644 ./debian/pkg/image/README    /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/usr/share/doc/linux-image-4.15.18nate+peter/debian.README
+install -p    -o root -g root  -m  644 .config	 /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter//boot/config-4.15.18nate+peter
+test ! -f debian/stamp/conf/vars                || \
+          install -p    -o root -g root  -m  644 debian/stamp/conf/vars  	/usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/usr/share/doc/linux-image-4.15.18nate+peter/conf.vars
+echo "This was produced by kernel-package version 13.018." > \
+	   /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/usr/share/doc/linux-image-4.15.18nate+peter/Buildinfo
+chmod 0644 /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/usr/share/doc/linux-image-4.15.18nate+peter/Buildinfo
+test ! -f       debian/stamp/build/info || \
+ install -p    -o root -g root  -m  644 debian/stamp/build/info /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/usr/share/doc/linux-image-4.15.18nate+peter/buildinfo
+if test -f README.Debian ; then \
+   install -p    -o root -g root  -m  644 README.Debian /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/usr/share/doc/linux-image-4.15.18nate+peter/README.Debian.1st;\
+fi
+if test -f Debian.src.changelog; then		    \
+  install -p    -o root -g root  -m  644 Debian.src.changelog	/usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/usr/share/doc/linux-image-4.15.18nate+peter/; \
+fi
+gzip -9qfr			  /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/usr/share/doc/linux-image-4.15.18nate+peter
+install -p    -o root -g root  -m  644 ./debian/pkg/image/copyright /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/usr/share/doc/linux-image-4.15.18nate+peter/copyright
+restore_upstream_debianization
+test ! -f scripts/package/builddeb.kpkg-dist ||	mv -f scripts/package/builddeb.kpkg-dist scripts/package/builddeb
+test ! -f scripts/package/Makefile.kpkg-dist ||	mv -f scripts/package/Makefile.kpkg-dist scripts/package/Makefile
+/usr/bin/make EXTRAVERSION=nate+peter INSTALL_MOD_PATH=/usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter	              \
+	INSTALL_FW_PATH=/usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/lib/firmware/4.15.18nate+peter     \
+	 ARCH=x86_64 INSTALL_MOD_STRIP=1 modules_install
+make[2]: Entering directory '/usr/src/linux-source-4.15.0'
+scripts/kconfig/conf  --silentoldconfig Kconfig
+security/Kconfig:393:warning: defaults for choice values not supported
+security/Kconfig:397:warning: defaults for choice values not supported
+security/Kconfig:401:warning: defaults for choice values not supported
+security/Kconfig:405:warning: defaults for choice values not supported
+security/Kconfig:409:warning: defaults for choice values not supported
+  INSTALL arch/x86/crypto/aes-x86_64.ko
+  INSTALL arch/x86/crypto/aesni-intel.ko
+  INSTALL arch/x86/crypto/crc32-pclmul.ko
+  INSTALL arch/x86/crypto/crct10dif-pclmul.ko
+  INSTALL arch/x86/crypto/ghash-clmulni-intel.ko
+  INSTALL arch/x86/crypto/glue_helper.ko
+  INSTALL arch/x86/events/intel/intel-rapl-perf.ko
+  INSTALL crypto/cryptd.ko
+  INSTALL crypto/crypto_simd.ko
+  INSTALL crypto/pcbc.ko
+  INSTALL drivers/acpi/video.ko
+  INSTALL drivers/ata/acard-ahci.ko
+  INSTALL drivers/ata/ahci.ko
+  INSTALL drivers/ata/ahci_platform.ko
+  INSTALL drivers/ata/libahci.ko
+  INSTALL drivers/ata/libahci_platform.ko
+  INSTALL drivers/ata/pata_acpi.ko
+  INSTALL drivers/gpu/drm/drm.ko
+  INSTALL drivers/gpu/drm/drm_kms_helper.ko
+  INSTALL drivers/gpu/drm/ttm/ttm.ko
+  INSTALL drivers/gpu/drm/virtio/virtio-gpu.ko
+  INSTALL drivers/gpu/drm/vmwgfx/vmwgfx.ko
+  INSTALL drivers/hid/hid-generic.ko
+  INSTALL drivers/hid/hid.ko
+  INSTALL drivers/hid/usbhid/usbhid.ko
+  INSTALL drivers/i2c/algos/i2c-algo-bit.ko
+  INSTALL drivers/i2c/busses/i2c-piix4.ko
+  INSTALL drivers/input/input-leds.ko
+  INSTALL drivers/input/joydev.ko
+  INSTALL drivers/input/mouse/psmouse.ko
+  INSTALL drivers/input/serio/serio_raw.ko
+  INSTALL drivers/macintosh/mac_hid.ko
+  INSTALL drivers/net/ethernet/intel/e1000/e1000.ko
+  INSTALL drivers/video/fbdev/core/fb_sys_fops.ko
+  INSTALL drivers/video/fbdev/core/syscopyarea.ko
+  INSTALL drivers/video/fbdev/core/sysfillrect.ko
+  INSTALL drivers/video/fbdev/core/sysimgblt.ko
+  INSTALL drivers/xen/tmem.ko
+  INSTALL drivers/xen/xen-privcmd.ko
+  INSTALL fs/autofs4/autofs4.ko
+  INSTALL kernel/configs.ko
+  DEPMOD  4.15.18nate+peter
+make[2]: Leaving directory '/usr/src/linux-source-4.15.0'
+/usr/bin/make EXTRAVERSION=nate+peter INSTALL_MOD_PATH=/usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter	              \
+	INSTALL_FW_PATH=/usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/lib/firmware/4.15.18nate+peter     \
+	 ARCH=x86_64 INSTALL_MOD_STRIP=1 dtbs || echo "no dtb target"
+make[2]: Entering directory '/usr/src/linux-source-4.15.0'
+make[2]: *** No rule to make target 'dtbs'.  Stop.
+make[2]: Leaving directory '/usr/src/linux-source-4.15.0'
+no dtb target
+/usr/bin/make EXTRAVERSION=nate+peter INSTALL_MOD_PATH=/usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter	              \
+	INSTALL_FW_PATH=/usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/lib/firmware/4.15.18nate+peter     \
+	 ARCH=x86_64 INSTALL_MOD_STRIP=1                  \
+	INSTALL_DTBS_PATH=/usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/usr/lib/linux-image-4.15.18nate+peter      \
+	dtbs_install || echo "no dtbs_install target"
+make[2]: Entering directory '/usr/src/linux-source-4.15.0'
+make[2]: *** No rule to make target 'dtbs_install'.  Stop.
+make[2]: Leaving directory '/usr/src/linux-source-4.15.0'
+no dtbs_install target
+test ! -f /lguest ||			     \
+    install -p    -o root -g root  -m  644 /lguest /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/lib/modules/4.15.18nate+peter/lguest
+test ! -f /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/lib/modules/4.15.18nate+peter/lguest ||		   \
+    chmod 755 /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/lib/modules/4.15.18nate+peter/lguest
+test ! -e /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/lib/modules/4.15.18nate+peter/source ||			  \
+   mv /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/lib/modules/4.15.18nate+peter/source ./debian/source-link
+test ! -e /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/lib/modules/4.15.18nate+peter/build ||			  \
+   mv /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/lib/modules/4.15.18nate+peter/build ./debian/build-link
+test ! -e ./debian/source-link ||					       \
+   mv ./debian/source-link /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/lib/modules/4.15.18nate+peter/source
+test ! -e  ./debian/build-link ||					       \
+   mv  ./debian/build-link /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/lib/modules/4.15.18nate+peter/build
+/sbin/depmod -q -FSystem.map -b /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter 4.15.18nate+peter;
+depmod: WARNING: Ignored deprecated option -q
+test ! -f System.map ||	 cp System.map			       \
+		/usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter//boot/System.map-4.15.18nate+peter;
+test ! -f System.map ||	 chmod 644			       \
+		/usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter//boot/System.map-4.15.18nate+peter;
+cp arch/x86/boot/bzImage /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter//boot/vmlinuz-4.15.18nate+peter
+mkdir -p /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/usr/lib/linux-image-4.15.18nate+peter
+restore_upstream_debianization
+test ! -f scripts/package/builddeb.kpkg-dist ||	mv -f scripts/package/builddeb.kpkg-dist scripts/package/builddeb
+test ! -f scripts/package/Makefile.kpkg-dist ||	mv -f scripts/package/Makefile.kpkg-dist scripts/package/Makefile
+chmod 644 /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter//boot/vmlinuz-4.15.18nate+peter;
+if test -d /usr/src/linux-source-4.15.0/debian/image.d ; then			  \
+     TMPTOP=/usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter version=4.15.18nate+peter IMAGE_TOP=/usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter	\
+	   run-parts --verbose /usr/src/linux-source-4.15.0/debian/image.d ;	  \
+ fi
+if [ -x debian/post-install ]; then				  \
+	TMPTOP=/usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter STEM=linux version=4.15.18nate+peter	\
+	IMAGE_TOP=/usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter debian/post-install;		  \
+fi
+test ! -f Kerntypes ||	cp Kerntypes				       \
+		/usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter//boot/Kerntypes-4.15.18nate+peter
+test ! -f Kerntypes ||	chmod 644				       \
+		/usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter//boot/Kerntypes-4.15.18nate+peter
+====== making target debian/stamp/binary/pre-linux-image-4.15.18nate+peter [new prereqs: linux-image-4.15.18nate+peter]======
+
+This is kernel package version 13.018.
+/usr/bin/make -f ./debian/rules debian/stamp/binary/linux-image-4.15.18nate+peter
+make[2]: Entering directory '/usr/src/linux-source-4.15.0'
+====== making target debian/stamp/binary/linux-image-4.15.18nate+peter [new prereqs: ]======
+
+This is kernel package version 13.018.
+install -p -d -o root -g root  -m  755 /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/DEBIAN
+sed -e 's/=V/4.15.18nate+peter/g'    -e 's/=IB//g' \
+    -e 's/=ST/linux/g'  -e 's/=R//g' \
+            -e 's/=KPV/13.018/g'                       \
+    -e 's/=K/vmlinuz/g'   	     \
+    -e 's/=I/YES/g'     -e 's,=D,/boot,g'	     \
+    -e 's@=A@amd64@g'   \
+    -e 's@=B@x86_64@g'     \
+  ./debian/pkg/image/postinst > /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/DEBIAN/postinst
+chmod 755 /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/DEBIAN/postinst
+sed -e 's/=V/4.15.18nate+peter/g'	   -e 's/=IB//g' \
+    -e 's/=ST/linux/g'  -e 's/=R//g' \
+            -e 's/=KPV/13.018/g'                       \
+    -e 's/=K/vmlinuz/g'   	     \
+    -e 's/=I/YES/g'     -e 's,=D,/boot,g'	     \
+    -e 's@=A@amd64@g'   \
+    -e 's@=B@x86_64@g'    \
+ ./debian/pkg/image/config > /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/DEBIAN/config
+chmod 755 /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/DEBIAN/config
+sed -e 's/=V/4.15.18nate+peter/g'	   -e 's/=IB//g' \
+    -e 's/=ST/linux/g'  -e 's/=R//g' \
+            -e 's/=KPV/13.018/g'                       \
+    -e 's/=K/vmlinuz/g'  	     \
+    -e 's/=I/YES/g'     -e 's,=D,/boot,g'	     \
+    -e 's/=MD//g'				     \
+    -e 's@=MK@@g' -e 's@=A@amd64@g'   \
+    -e 's@=M@@g'    -e 's/=OF//g'    \
+    -e 's/=S//g' -e 's@=B@x86_64@g'     \
+ ./debian/pkg/image/postrm > /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/DEBIAN/postrm
+chmod 755 /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/DEBIAN/postrm
+sed -e 's/=V/4.15.18nate+peter/g'	   -e 's/=IB//g'	   \
+    -e 's/=ST/linux/g'  -e 's/=R//g' \
+            -e 's/=KPV/13.018/g'                       \
+    -e 's/=K/vmlinuz/g'  	     \
+    -e 's/=I/YES/g'     -e 's,=D,/boot,g'	     \
+    -e 's/=MD//g'				     \
+    -e 's@=MK@@g' -e 's@=A@amd64@g'   \
+    -e 's@=M@@g'    -e 's/=OF//g'    \
+    -e 's/=S//g' -e 's@=B@x86_64@g'     \
+ ./debian/pkg/image/preinst > /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/DEBIAN/preinst
+chmod 755 /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/DEBIAN/preinst
+sed -e 's/=V/4.15.18nate+peter/g'    -e 's/=IB//g'    \
+    -e 's/=ST/linux/g'  -e 's/=R//g' \
+            -e 's/=KPV/13.018/g'                       \
+    -e 's/=K/vmlinuz/g'  	     \
+    -e 's/=I/YES/g'     -e 's,=D,/boot,g'	     \
+    -e 's/=MD//g'				     \
+    -e 's@=MK@@g' -e 's@=A@amd64@g'   \
+    -e 's@=M@@g'    -e 's/=OF//g'    \
+    -e 's/=S//g' -e 's@=B@x86_64@g'     \
+ ./debian/pkg/image/prerm > /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/DEBIAN/prerm
+chmod 755 /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/DEBIAN/prerm
+po2debconf debian/templates.in > debian/templates.l10n
+sed -e 's/=V/4.15.18nate+peter/g'    -e 's/=IB//g'    \
+    -e 's/=ST/linux/g'  -e 's/=R//g' \
+            -e 's/=KPV/13.018/g'                       \
+    -e 's/=K/vmlinuz/g'           \
+    -e 's@=MK@@g' -e 's@=A@amd64@g'   \
+    -e 's/=I/YES/g'     -e 's,=D,/boot,g'        \
+    -e 's/=MD//g'                                \
+    -e 's@=M@@g'    -e 's/=OF//g'    \
+    -e 's/=S//g' -e 's@=B@x86_64@g'     \
+ ./debian/templates.l10n   > ./debian/templates.master
+install -p    -o root -g root  -m  644 ./debian/templates.master /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/DEBIAN/templates
+dpkg-gencontrol -DArchitecture=amd64 -isp	     \
+		-plinux-image-4.15.18nate+peter -P/usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter/
+dpkg-gencontrol: warning: -isp is deprecated; it is without effect
+create_md5sums_fn () { cd $1 ; find . -type f ! -regex './DEBIAN/.*' ! -regex './var/.*'      -printf '%P\0' | xargs -r0 md5sum > DEBIAN/md5sums ; if [ -z "DEBIAN/md5sums" ] ; then rm -f "DEBIAN/md5sums" ; fi ; } ; create_md5sums_fn	       /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter
+chmod -R og=rX		       /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter
+test ! -e /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter//boot/vmlinuz-4.15.18nate+peter        || chmod og-rx /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter//boot/vmlinuz-4.15.18nate+peter
+test ! -e /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter//boot/System.map-4.15.18nate+peter  || \
+           chmod og-rx /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter//boot/System.map-4.15.18nate+peter /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter//boot/vmlinuz-4.15.18nate+peter
+chown -R root:root	       /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter
+dpkg --build		       /usr/src/linux-source-4.15.0/debian/linux-image-4.15.18nate+peter ..
+dpkg-deb: building package 'linux-image-4.15.18nate+peter' in '../linux-image-4.15.18nate+peter_4.15.18nate+peter-10.00.Custom_amd64.deb'.
+make[2]: Leaving directory '/usr/src/linux-source-4.15.0'
+make[1]: Leaving directory '/usr/src/linux-source-4.15.0'
+]0;root@mradmin-VirtualBox: /usr/src/linux-source-4.15.0root@mradmin-VirtualBox:/usr/src/linux-source-4.15.0# dp[K[Kdpkg -i *.deb[K[K[K[K[K[K[K[K[K[K[K[K[Kcd ..
+]0;root@mradmin-VirtualBox: /usr/srcroot@mradmin-VirtualBox:/usr/src# dpkg -i *.deb
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 166186 files and directories currently installed.)
+Preparing to unpack linux-image-4.15.18nate+peter_4.15.18nate+peter-10.00.Custom_amd64.deb ...
+[?1049h[1;38r[4l[?25l(B[m[37m[40m[1;38r[H[2J[1;1H[1m[37m[44m                                                                                                                                                     [2;1H                                                                                                                                                     [3;1H                                                                                                                                                     [4;1H                                                                                                                                                     [5;1H                                                                                                                                                     [6;1H                                                                                                                                                     [7;1H                                                                                                                                                     [8;1H                                                                                                                                                     [9;1H                                                                                                                                                     [10;1H                                                                                                                                                     [11;1H                                                                                                                                                     [12;1H                                                                                                                                                     [13;1H                                                                                                                                                     [14;1H                                                                                                                                                     [15;1H                                                                                                                                                     [16;1H                                                                                                                                                     [17;1H                                                                                                                                                     [18;1H                                                                                                                                                     [19;1H                                                                                                                                                     [20;1H                                                                                                                                                     [21;1H                                                                                                                                                     [22;1H                                                                                                                                                     [23;1H                                                                                                                                                     [24;1H                                                                                                                                                     [25;1H                                                                                                                                                     [26;1H                                                                                                                                                     [27;1H                                                                                                                                                     [28;1H                                                                                                                                                     [29;1H                                                                                                                                                     [30;1H                                                                                                                                                     [31;1H                                                                                                                                                     [32;1H                                                                                                                                                     [33;1H                                                                                                                                                     [34;1H                                                                                                                                                     [35;1H                                                                                                                                                     [36;1H                                                                                                                                                     [37;1H                                                                                                                                                     [38;1H                                                                                                                                                    [38;148H [4h [4l[1;1H(B[m[37m[44mPackage configuration[10;2H[30m[47m┌─────────────────────────────────────────────────┤ [31mConfiguring linux-image-4.15.18nate+peter[30m ├──────────────────────────────────────────────────┐[11;2H│                                                                                                                                                │[1m[37m[40m [12;2H(B[m[30m[47m│ You are attempting to install a kernel image (version 4.15.18nate+peter) However, the directory /lib/modules/4.15.18nate+peter/kernel still    │[1m[37m[40m [13;2H(B[m[30m[47m│ exists.  If this directory belongs to a previous linux-image-4.15.18nate+peter package, and if you have deselected some modules, or installed  │[1m[37m[40m [14;2H(B[m[30m[47m│ standalone modules packages, this could be bad.                                                                                                │[1m[37m[40m [15;2H(B[m[30m[47m│                                                                                                                                                │[1m[37m[40m [16;2H(B[m[30m[47m│ If /lib/modules/4.15.18nate+peter/kernel belongs to an old install of linux-image-4.15.18nate+peter, then this is your last chance to abort    │[1m[37m[40m [17;2H(B[m[30m[47m│ the installation of this kernel image (nothing has been changed yet).                                                                          │[1m[37m[40m [18;2H(B[m[30m[47m│                                                                                                                                                │[1m[37m[40m [19;2H(B[m[30m[47m│ If you know what you are doing, and if you feel that this image should be installed despite this anomaly, Please answer n to the question.     │[1m[37m[40m [20;2H(B[m[30m[47m│                                                                                                                                                │[1m[37m[40m [21;2H(B[m[30m[47m│ Otherwise, I suggest you move /lib/modules/4.15.18nate+peter/kernel out of the way, perhaps to /lib/modules/4.15.18nate+peter.kernel.old or    │[1m[37m[40m [22;2H(B[m[30m[47m│ something, and then try re-installing this image.                                                                                              │[1m[37m[40m [23;2H(B[m[30m[47m│                                                                                                                                                │[1m[37m[40m [24;2H(B[m[30m[47m│  Stop install since the kernel-image is already installed?                                                                                     │[1m[37m[40m [25;2H(B[m[30m[47m│                                                                                                                                                │[1m[37m[40m [26;2H(B[m[30m[47m│                                           <Yes>                                              [37m[41m<No>[30m[47m                                              │[1m[37m[40m [27;2H(B[m[30m[47m│                                                                                                                                                │[1m[37m[40m [28;2H(B[m[30m[47m└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘[1m[37m[40m [29;3H                                                                                                                                                  [26;98H[?12l[?25h[38;1H(B[m[37m[40m(B[m[39;49m[K[?1049l[?1049h[1;38r[4l[?25l(B[m[37m[40m[1;38r[H[2J[1;1H[1m[37m[44m                                                                                                                                                     [2;1H                                                                                                                                                     [3;1H                                                                                                                                                     [4;1H                                                                                                                                                     [5;1H                                                                                                                                                     [6;1H                                                                                                                                                     [7;1H                                                                                                                                                     [8;1H                                                                                                                                                     [9;1H                                                                                                                                                     [10;1H                                                                                                                                                     [11;1H                                                                                                                                                     [12;1H                                                                                                                                                     [13;1H                                                                                                                                                     [14;1H                                                                                                                                                     [15;1H                                                                                                                                                     [16;1H                                                                                                                                                     [17;1H                                                                                                                                                     [18;1H                                                                                                                                                     [19;1H                                                                                                                                                     [20;1H                                                                                                                                                     [21;1H                                                                                                                                                     [22;1H                                                                                                                                                     [23;1H                                                                                                                                                     [24;1H                                                                                                                                                     [25;1H                                                                                                                                                     [26;1H                                                                                                                                                     [27;1H                                                                                                                                                     [28;1H                                                                                                                                                     [29;1H                                                                                                                                                     [30;1H                                                                                                                                                     [31;1H                                                                                                                                                     [32;1H                                                                                                                                                     [33;1H                                                                                                                                                     [34;1H                                                                                                                                                     [35;1H                                                                                                                                                     [36;1H                                                                                                                                                     [37;1H                                                                                                                                                     [38;1H                                                                                                                                                    [38;148H [4h [4l[1;1H(B[m[37m[44mPackage configuration[12;2H[30m[47m┌─────────────────────────────────────────────────┤ [31mConfiguring linux-image-4.15.18nate+peter[30m ├──────────────────────────────────────────────────┐[13;2H│                                                                                                                                                │[1m[37m[40m [14;2H(B[m[30m[47m│  The kernel version running is the same as the one being installed                                                                             │[1m[37m[40m [15;2H(B[m[30m[47m│                                                                                                                                                │[1m[37m[40m [16;2H(B[m[30m[47m│ You are attempting to install a kernel version that is the same as the version you are currently running (version 4.15.18nate+peter). The      │[1m[37m[40m [17;2H(B[m[30m[47m│ modules list is quite likely to have been changed, and the modules dependency file /lib/modules/4.15.18nate+peter/modules.dep needs to be      │[1m[37m[40m [18;2H(B[m[30m[47m│ re-built. It can not be built correctly right now, since the module list for the running kernel are likely to be different from the kernel     │[1m[37m[40m [19;2H(B[m[30m[47m│ installed. I am creating a new modules.dep file, but that may not be correct. It shall be regenerated correctly at next reboot.                │[1m[37m[40m [20;2H(B[m[30m[47m│                                                                                                                                                │[1m[37m[40m [21;2H(B[m[30m[47m│ I repeat: you have to reboot in order for the modules file to be created correctly. Until you reboot, it may be impossible to load some        │[1m[37m[40m [22;2H(B[m[30m[47m│ modules. Reboot as soon as this install is finished (Do not reboot right now, since you may not be able to boot back up until installation is  │[1m[37m[40m [23;2H(B[m[30m[47m│ over, but boot immediately after). I can not stress that too much. You need to reboot soon.                                                    │[1m[37m[40m [24;2H(B[m[30m[47m│                                                                                                                                                │[1m[37m[40m [25;2H(B[m[30m[47m│                                                                     [37m[41m<Ok>[30m[47m                                                                       │[1m[37m[40m [26;2H(B[m[30m[47m│                                                                                                                                                │[1m[37m[40m [27;2H(B[m[30m[47m└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘[1m[37m[40m [28;3H                                                                                                                                                  [25;73H[?12l[?25h[38;1H(B[m[37m[40m(B[m[39;49m[K[?1049lExamining /etc/kernel/preinst.d/
+run-parts: executing /etc/kernel/preinst.d/intel-microcode 4.15.18nate+peter /boot/vmlinuz-4.15.18nate+peter
+Done.
+Unpacking linux-image-4.15.18nate+peter (4.15.18nate+peter-10.00.Custom) over (4.15.18nate+peter-10.00.Custom) ...
+Examining /etc/kernel/postrm.d .
+run-parts: executing /etc/kernel/postrm.d/initramfs-tools 4.15.18nate+peter /boot/vmlinuz-4.15.18nate+peter
+run-parts: executing /etc/kernel/postrm.d/zz-update-grub 4.15.18nate+peter /boot/vmlinuz-4.15.18nate+peter
+Setting up linux-image-4.15.18nate+peter (4.15.18nate+peter-10.00.Custom) ...
+Running depmod.
+Examining /etc/kernel/postinst.d.
+run-parts: executing /etc/kernel/postinst.d/apt-auto-removal 4.15.18nate+peter /boot/vmlinuz-4.15.18nate+peter
+run-parts: executing /etc/kernel/postinst.d/dkms 4.15.18nate+peter /boot/vmlinuz-4.15.18nate+peter
+run-parts: executing /etc/kernel/postinst.d/initramfs-tools 4.15.18nate+peter /boot/vmlinuz-4.15.18nate+peter
+update-initramfs: Generating /boot/initrd.img-4.15.18nate+peter
+run-parts: executing /etc/kernel/postinst.d/pm-utils 4.15.18nate+peter /boot/vmlinuz-4.15.18nate+peter
+run-parts: executing /etc/kernel/postinst.d/update-notifier 4.15.18nate+peter /boot/vmlinuz-4.15.18nate+peter
+run-parts: executing /etc/kernel/postinst.d/zz-update-grub 4.15.18nate+peter /boot/vmlinuz-4.15.18nate+peter
+Generating grub configuration file ...
+Found linux image: /boot/vmlinuz-4.15.18nate+peter
+Found initrd image: /boot/initrd.img-4.15.18nate+peter
+Found linux image: /boot/vmlinuz-4.15.0-43-generic
+Found initrd image: /boot/initrd.img-4.15.0-43-generic
+Found memtest86+ image: /memtest86+.elf
+Found memtest86+ image: /memtest86+.bin
+done
+
+*** REBOOT HERE ***
+
+Script started on Tue 30 Apr 2019 09:32:57 PM EDT
+]0;mradmin@mradmin-VirtualBox: ~/Desktop/CS232 Testingmradmin@mradmin-VirtualBox:~/Desktop/CS232 Testing$ make
+g++ -Wall -g -c main.cpp
+g++ -Wall -g -o testProj main.o
+]0;mradmin@mradmin-VirtualBox: ~/Desktop/CS232 Testingmradmin@mradmin-VirtualBox:~/Desktop/CS232 Testing$ ./testProj
+Invoking print name call...
+System call returned 0
+
+Invoking fill team array call...
+System call returned 0
+Buffer now reads
+ nate+peter 
+
+Invoking fill user array call...
+System call returned 0
+Buffer now reads
+ mradmin 
+]0;mradmin@mradmin-VirtualBox: ~/Desktop/CS232 Testingmradmin@mradmin-VirtualBox:~/Desktop/CS232 Testing$ sdo [K[K[Kudo su
+[sudo] password for mradmin: 
+]0;root@mradmin-VirtualBox: /home/mradmin/Desktop/CS232 Testingroot@mradmin-VirtualBox:/home/mradmin/Desktop/CS232 Testing# ./testProj
+Invoking print name call...
+System call returned 0
+
+Invoking fill team array call...
+System call returned 0
+Buffer now reads
+ nate+peter 
+
+Invoking fill user array call...
+System call returned 0
+Buffer now reads
+ root 
+]0;root@mradmin-VirtualBox: /home/mradmin/Desktop/CS232 Testingroot@mradmin-VirtualBox:/home/mradmin/Desktop/CS232 Testing# exit
+]0;mradmin@mradmin-VirtualBox: ~/Desktop/CS232 Testingmradmin@mradmin-VirtualBox:~/Desktop/CS232 Testing$ exit
+
+Script done on Tue 30 Apr 2019 09:33:35 PM EDT

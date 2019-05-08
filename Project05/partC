@@ -1,0 +1,66 @@
+Script started on Wed 08 May 2019 10:51:35 AM EDT
+pjh26@gold06:~/CS232/Project05$ java MainClient gold19 9999
+Hail Caesar!
+
+Welcome to the Caesar Cipher Client! To begin, enter a number between 1 and 25.
+
+Afterwards, enter the set of text that you would like to encode.
+
+You can exit at any time by entering the command 'quit'.
+
+And don't forget, HAIL CAESAR!
+
+100
+echo: Please enter a number 1-25 to be used for the cipher
+25
+echo: Chosen number : 25
+abce defg::ABCDEFG
+echo: zabcdef::ZABCDEF
+quit
+pjh26@gold06:~/CS232/Project05$ java MainClient gold19 9999
+Hail Caesar!
+
+Welcome to the Caesar Cipher Client! To begin, enter a number between 1 and 25.
+
+Afterwards, enter the set of text that you would like to encode.
+
+You can exit at any time by entering the command 'quit'.
+
+And don't forget, HAIL CAESAR!
+
+HE  2
+echo: Chosen number : 2
+a
+echo: c
+b
+echo: d
+c
+echo: e
+d
+echo: f
+e
+echo: g
+f
+echo: h
+quit
+pjh26@gold06:~/CS232/Project05$ java MainClient gold19 9999
+Hail Caesar!
+
+Welcome to the Caesar Cipher Client! To begin, enter a number between 1 and 25.
+
+Afterwards, enter the set of text that you would like to encode.
+
+You can exit at any time by entering the command 'quit'.
+
+And don't forget, HAIL CAESAR!
+
+5
+echo: Chosen number : 5
+YOLO
+echo: DTQT
+NOBCOQWGIBDSKJBNWEOITSDFH(r2983htralvbfasp4yq23'tgawe
+echo: STGHTVBLNGIXPOGSBJTNYXIKM(w2983mywfqagkfxu4dv23'ylfbj
+quit
+pjh26@gold06:~/CS232/Project05$ exit
+
+Script done on Wed 08 May 2019 10:52:46 AM EDT

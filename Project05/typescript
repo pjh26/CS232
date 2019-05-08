@@ -1,0 +1,163 @@
+Script started on Mon 06 May 2019 08:40:53 PM EDT
+pjh26@gold28:~/CS232/Project05$ cat MainServer.java
+/**	MainServer.java - This file defines the server for a multi-threaded Caesar cipher service
+*
+*	Student :	Peter Haagsma
+* 	Date    :	May 7, 2019
+*/
+
+import java.io.*;
+import java.net.*;
+
+/** MultiCaesarCipherServer Class 
+*	
+*	stores the port number and opens a socket to make a caesar cipher available
+*	to many clients
+*/
+class MultiCaesarCipherServer extends Object {
+	private static int PORT;
+	private static ServerSocket mySocket = null;
+
+	/** Constructor for MultiCaesCipherServer
+	*	
+	*		@Params : integer port number
+	*/
+	public MultiCaesarCipherServer(int port) {
+		PORT = port;
+		try {
+			mySocket = new ServerSocket(PORT);
+		} catch (Exception e) {
+			System.err.println(e);
+		}
+	}
+
+	/** run()
+	*
+	*	This starts the caesar cipher server. It listens for new clients and for each
+	*	new client it creates a new server thread to handle intraction with that client
+	*/
+	public void run() {
+		boolean listener = true;
+
+		try {
+			while (listener) {
+				new MultiServerThread(mySocket.accept()).start();
+			}
+		} catch (IOException e) {
+			System.err.println(e);
+			System.exit(-1);
+		}
+	}
+}
+
+/** MultiServerThread Class
+*
+*	this class is called by the caesar cipher server in order to support multiple clients
+*	at the same time. It creates a thread that handles interations with a client
+*/
+class MultiServerThread extends Thread {
+	private static Socket client = null;
+	private static int cipherInt = 0;
+	private static String alpha = "abcdefghijklmnopqrstuvwxyz";
+	private static String ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+	/** MultiServerThread constructor
+	*
+	*	@params : Socket socket - this is the connection to the client
+	*/
+	public MultiServerThread(Socket socket) {
+		super("MultiServerThread");
+		this.client = socket;
+	}
+
+	/** run()
+	*
+	*	This handles cipher interactions with the client and the server. We catch the cipher number
+	*	and the quit command here
+	*/
+	public void run() { 
+		try (
+			PrintWriter output = new PrintWriter(client.getOutputStream(), true);
+			BufferedReader input = new BufferedReader(new InputStreamReader(client.getInputStream()));
+			) {
+
+			String inputLine;
+			while ((inputLine = input.readLine()) != "quit") {
+				try {
+					this.cipherInt = Integer.parseInt(inputLine);
+				} catch (Exception e) {
+					System.err.println(e);
+				}
+
+				if (this.cipherInt > 0 && this.cipherInt < 26) {
+					output.println("Chosen number : " + inputLine);
+					break;
+				} else {
+					output.println("Please enter a number 1-25 to be used for the cipher");
+				}
+			}
+
+			while ((inputLine = input.readLine()) != "quit") {
+				output.println(Cipher(inputLine));
+			}
+
+			client.close();
+		} catch (Exception e) {
+			System.err.println(e);
+		}
+	}
+
+	/** Cipher(String message)
+	*
+	*	This function takes in a string from the client and using the predetermined cipher
+	*	number it returns the encoded message.
+	*	
+	*	@params :	string message
+	*	returns : 	string encoded message
+	*/
+	private String Cipher(String message) {
+
+		StringBuilder builder = new StringBuilder();
+		int size = message.length();
+		int index = 0;
+		char character;
+
+		// We iterate through the whole message
+		for (int i = 0; i < message.length(); i++) {
+			character = message.charAt(i);
+
+			// And if the character is in the lower or uppercase alphabet then we 
+			// encode and append the character
+			if ((index = alpha.indexOf(character)) != -1) {
+				builder.append(alpha.charAt((index + cipherInt) % 26));
+			} else if ((index = this.ALPHA.indexOf(character)) != -1) {
+				builder.append(this.ALPHA.charAt((index + this.cipherInt) % 26));
+			} else {
+			// Otherwise we just append the character
+				builder.append(character);
+			}
+		}
+		return builder.toString();
+	}
+}
+
+// This class is called by the commandline command, it simply takes in the arguments and constructs
+// a new class to begin the caesar cipher service
+public class MainServer {
+	public static void main(String [] args) {
+		if (args.length == 1) {
+			MultiCaesarCipherServer hailCaesar = new MultiCaesarCipherServer(Integer.parseInt(args[0]));
+			hailCaesar.run();
+		} else {
+			System.err.println("\nUsage: java CaesarCipherClient <port>\n");
+		}
+	}
+}pjh26@gold28:~/CS232/Project05$ javac MainServer.java
+pjh26@gold28:~/CS232/Project05$ java AM  MainServer
+
+Usage: java CaesarCipherClient <port>
+
+pjh26@gold28:~/CS232/Project05$ java MainServer 9999
+^Cpjh26@gold28:~/CS232/Project05$ ^C
+
+Script done on Mon 06 May 2019 08:43:33 PM EDT
